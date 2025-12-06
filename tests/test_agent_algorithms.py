@@ -44,6 +44,28 @@ def test_wall_follower_struggles_on_loopy_maze():
         assert wf_result.metrics.path_length is None
 
 
+def test_wall_follower_loops_on_island_maze():
+    # Start between an inner loop and the goal; wall follower circles inner walls and never exits.
+    grid = [
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 1, 1, 1, 0, 0, 0],
+        [0, 1, 0, 1, 0, 0, 0],
+        [0, 1, 1, 1, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+        [0, 0, 0, 0, 0, 0, 0],
+    ]
+    start, goal = (1, 0), (6, 6)
+
+    wf_result = wall_follower(grid, start, goal, hand="right", max_steps=6)
+    bfs_result = bfs(grid, start, goal)
+
+    # With a tight step budget, wall follower stalls while BFS still solves quickly.
+    assert wf_result.path == []
+    assert wf_result.metrics.path_length is None
+    assert bfs_result.path
+
+
 def test_pledge_escapes_pillar_and_reaches_goal():
     grid = [
         [0, 0, 0, 0, 0],

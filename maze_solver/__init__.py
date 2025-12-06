@@ -8,6 +8,7 @@ from .baseline import (
     dfs_iterative,
     dijkstra,
     greedy_best_first,
+    dead_end_filling,
 )
 from .agent import pledge, tremaux, wall_follower
 
@@ -21,6 +22,7 @@ __all__ = [
     "dfs_iterative",
     "dijkstra",
     "greedy_best_first",
+    "dead_end_filling",
     "wall_follower",
     "pledge",
     "tremaux",

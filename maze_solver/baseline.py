@@ -305,3 +305,43 @@ def greedy_best_first(
     path = _reconstruct(parents, start, goal)
     steps = len(path) - 1
     return SearchResult(path, order, SearchMetrics(visited_count=len(visited), path_length=steps, path_cost=steps))
+
+
+def dead_end_filling(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
+    """Dead-end filling on a known map; prunes leaves to extract corridor path if one exists."""
+    if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
+        return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
+
+    working = [row[:] for row in grid]
+
+    def degree(pos: Position) -> int:
+        return sum(1 for _ in _neighbors(working, pos))
+
+    queue: deque[Position] = deque()
+    for r in range(len(working)):
+        for c in range(len(working[0])):
+            pos = (r, c)
+            if pos in (start, goal):
+                continue
+            if _is_walkable(working, pos) and degree(pos) <= 1:
+                queue.append(pos)
+
+    while queue:
+        pos = queue.popleft()
+        if pos in (start, goal):
+            continue
+        if not _is_walkable(working, pos):
+            continue
+        working[pos[0]][pos[1]] = 1  # fill this dead end
+        for nbr in _neighbors(working, pos):
+            if nbr in (start, goal):
+                continue
+            if _is_walkable(working, nbr) and degree(nbr) <= 1:
+                queue.append(nbr)
+
+    if not (_is_walkable(working, start) and _is_walkable(working, goal)):
+        return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
+
+    # Run BFS on the pruned maze to extract the corridor path.
+    result = bfs(working, start, goal)
+    return SearchResult(result.path, result.visited_order, result.metrics)
