@@ -10,12 +10,16 @@ from maze_solver import (
 )
 
 
-def assert_valid_path(grid, result: SearchResult, start, goal):
+def assert_valid_path(grid, result: SearchResult, start, goal, allow_diagonals: bool = False):
     assert result.path, "Expected a path"
     assert result.path[0] == start
     assert result.path[-1] == goal
     for (r1, c1), (r2, c2) in zip(result.path, result.path[1:]):
-        assert abs(r1 - r2) + abs(c1 - c2) == 1, "Path must move one step orthogonally"
+        dr, dc = abs(r1 - r2), abs(c1 - c2)
+        if allow_diagonals:
+            assert (dr == 1 and dc == 0) or (dr == 0 and dc == 1) or (dr == 1 and dc == 1)
+        else:
+            assert dr + dc == 1, "Path must move one step orthogonally"
         assert grid[r2][c2] == 0, "Path must stay on open cells"
 
 
@@ -53,6 +57,26 @@ def test_dijkstra_prefers_lower_cost_route_over_shorter_path():
     assert result.metrics.path_cost == pytest.approx(4)
 
 
+def test_a_star_respects_weight_grid():
+    grid = [
+        [0, 0, 0],
+        [0, 0, 0],
+        [0, 0, 0],
+    ]
+    weight_grid = [
+        [1, 10, 1],
+        [1, 1, 1],
+        [1, 1, 1],
+    ]
+    start, goal = (0, 0), (0, 2)
+
+    result = a_star(grid, start, goal, weight_grid=weight_grid)
+
+    assert_valid_path(grid, result, start, goal)
+    assert result.metrics.path_cost == pytest.approx(4)
+    assert result.metrics.path_length > 2  # detour around expensive cell
+
+
 def test_a_star_matches_bfs_on_unweighted_grid():
     grid = [
         [0, 0, 0],
@@ -68,6 +92,19 @@ def test_a_star_matches_bfs_on_unweighted_grid():
     assert a_star_result.metrics.path_length == bfs_result.metrics.path_length
 
 
+def test_bfs_with_diagonals_finds_shorter_path():
+    grid = [
+        [0, 0],
+        [0, 0],
+    ]
+    start, goal = (0, 0), (1, 1)
+
+    result = bfs(grid, start, goal, allow_diagonals=True)
+
+    assert_valid_path(grid, result, start, goal, allow_diagonals=True)
+    assert result.metrics.path_length == 1
+
+
 def test_greedy_best_first_finds_a_path():
     grid = [
         [0, 0, 0, 0],
@@ -80,6 +117,19 @@ def test_greedy_best_first_finds_a_path():
 
     assert_valid_path(grid, result, start, goal)
     assert result.metrics.path_length is not None
+
+
+def test_a_star_with_octile_handles_diagonals():
+    grid = [
+        [0, 0],
+        [0, 0],
+    ]
+    start, goal = (0, 0), (1, 1)
+
+    result = a_star(grid, start, goal, heuristic=lambda a, b: max(abs(a[0]-b[0]), abs(a[1]-b[1])), allow_diagonals=True)
+
+    assert_valid_path(grid, result, start, goal, allow_diagonals=True)
+    assert result.metrics.path_length == 1
 
 
 def test_dijkstra_unreachable_goal_returns_none():

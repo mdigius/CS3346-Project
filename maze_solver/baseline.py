@@ -13,6 +13,7 @@ class SearchMetrics:
     visited_count: int
     path_length: Optional[int]  # number of steps; None if no path
     path_cost: Optional[float] = None  # total cost; defaults to steps for unweighted grids
+    max_frontier_size: Optional[int] = None  # peak frontier/stack/heap size observed
 
 
 @dataclass
@@ -40,18 +41,22 @@ def _is_walkable(grid: List[List[int]], pos: Position) -> bool:
     )
 
 
-def _neighbors(grid: List[List[int]], pos: Position) -> Iterable[Position]:
-    """Get all walkable neighboring positions in cardinal directions (N, E, S, W).
+def _neighbors(grid: List[List[int]], pos: Position, allow_diagonals: bool = False) -> Iterable[Position]:
+    """Get all walkable neighboring positions (cardinal + optional diagonals).
     
     Args:
         grid: 2D grid where 0 = walkable, 1 = wall
         pos: Current (row, col) position
+        allow_diagonals: Whether to include diagonal moves
         
     Yields:
         Neighboring (row, col) positions that are walkable, in deterministic order
     """
     r, c = pos
-    for dr, dc in [(-1, 0), (0, 1), (1, 0), (0, -1)]:  # N, E, S, W (deterministic)
+    deltas = [(-1, 0), (0, 1), (1, 0), (0, -1)]  # N, E, S, W
+    if allow_diagonals:
+        deltas.extend([(-1, 1), (1, 1), (1, -1), (-1, -1)])
+    for dr, dc in deltas:
         nxt = (r + dr, c + dc)
         if _is_walkable(grid, nxt):
             yield nxt
@@ -90,31 +95,41 @@ def _manhattan(a: Position, b: Position) -> int:
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
+def _octile(a: Position, b: Position) -> float:
+    """Octile distance for 8-way movement with unit orthogonal/diagonal cost."""
+    dx = abs(a[0] - b[0])
+    dy = abs(a[1] - b[1])
+    return max(dx, dy)
+
+
 def _default_cost_fn(_: Position) -> int:
-    """Default cost function for unweighted grids; each step costs 1.
-    
-    Args:
-        _: Position (ignored for uniform cost)
-        
-    Returns:
-        Constant cost of 1
-    """
+    """Default cost function for unweighted grids; each step costs 1."""
     return 1
 
 
-def bfs(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
-    """Breadth-first search for shortest path on an unweighted grid.
+def _make_weighted_cost_fn(weight_grid: Optional[List[List[float]]]) -> Callable[[Position], float]:
+    """Create a cost function from an optional weight grid (aligned to the maze).
     
-    Explores level-by-level, guaranteeing the shortest path in terms of steps.
-    
-    Args:
-        grid: 2D grid where 0 = walkable, 1 = wall
-        start: Starting (row, col) position
-        goal: Goal (row, col) position
-        
-    Returns:
-        SearchResult with path, visited order, and metrics (visited count, path length, cost)
+    If no weight grid is provided, returns a uniform cost function.
     """
+    if weight_grid is None:
+        return _default_cost_fn
+
+    def cost_fn(pos: Position) -> float:
+        r, c = pos
+        return weight_grid[r][c]
+
+    return cost_fn
+
+
+def bfs(
+    grid: List[List[int]],
+    start: Position,
+    goal: Position,
+    allow_diagonals: bool = False,
+    on_expand: Optional[Callable[[Position], None]] = None,
+) -> SearchResult:
+    """Breadth-first search for shortest path on an unweighted grid."""
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -122,41 +137,39 @@ def bfs(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
     parents: Dict[Position, Position] = {}
     order: List[Position] = []
     frontier: deque[Position] = deque([start])
+    max_frontier = len(frontier)
 
     while frontier:
         current = frontier.popleft()
         order.append(current)
+        if on_expand:
+            on_expand(current)
         if current == goal:
             break
-        for nbr in _neighbors(grid, current):
+        for nbr in _neighbors(grid, current, allow_diagonals=allow_diagonals):
             if nbr in visited:
                 continue
             visited.add(nbr)
             parents[nbr] = current
             frontier.append(nbr)
+        max_frontier = max(max_frontier, len(frontier))
 
     if goal not in visited:
-        return SearchResult([], order, SearchMetrics(visited_count=len(visited), path_length=None))
+        return SearchResult([], order, SearchMetrics(visited_count=len(visited), path_length=None, max_frontier_size=max_frontier))
 
     path = _reconstruct(parents, start, goal)
     steps = len(path) - 1
-    return SearchResult(path, order, SearchMetrics(visited_count=len(visited), path_length=steps, path_cost=steps))
+    return SearchResult(path, order, SearchMetrics(visited_count=len(visited), path_length=steps, path_cost=steps, max_frontier_size=max_frontier))
 
 
-def dfs_iterative(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
-    """Iterative depth-first search; returns a found path (not guaranteed shortest).
-    
-    Uses a stack to explore deeply before backtracking. Path length may be longer
-    than optimal but uses less memory than BFS for deep mazes.
-    
-    Args:
-        grid: 2D grid where 0 = walkable, 1 = wall
-        start: Starting (row, col) position
-        goal: Goal (row, col) position
-        
-    Returns:
-        SearchResult with path (possibly non-optimal), visited order, and metrics
-    """
+def dfs_iterative(
+    grid: List[List[int]],
+    start: Position,
+    goal: Position,
+    allow_diagonals: bool = False,
+    on_expand: Optional[Callable[[Position], None]] = None,
+) -> SearchResult:
+    """Iterative depth-first search; returns a found path (not guaranteed shortest)."""
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -164,41 +177,39 @@ def dfs_iterative(grid: List[List[int]], start: Position, goal: Position) -> Sea
     parents: Dict[Position, Position] = {}
     order: List[Position] = []
     stack: List[Position] = [start]
+    max_frontier = len(stack)
 
     while stack:
         current = stack.pop()
         order.append(current)
+        if on_expand:
+            on_expand(current)
         if current == goal:
             break
-        for nbr in _neighbors(grid, current):
+        for nbr in _neighbors(grid, current, allow_diagonals=allow_diagonals):
             if nbr in visited:
                 continue
             visited.add(nbr)
             parents[nbr] = current
             stack.append(nbr)
+        max_frontier = max(max_frontier, len(stack))
 
     if goal not in visited:
-        return SearchResult([], order, SearchMetrics(visited_count=len(visited), path_length=None))
+        return SearchResult([], order, SearchMetrics(visited_count=len(visited), path_length=None, max_frontier_size=max_frontier))
 
     path = _reconstruct(parents, start, goal)
     steps = len(path) - 1
-    return SearchResult(path, order, SearchMetrics(visited_count=len(visited), path_length=steps, path_cost=steps))
+    return SearchResult(path, order, SearchMetrics(visited_count=len(visited), path_length=steps, path_cost=steps, max_frontier_size=max_frontier))
 
 
-def bidirectional_bfs(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
-    """Bidirectional BFS: searches from both start and goal simultaneously.
-    
-    Meets in the middle for faster search on large distances. Optimal path guaranteed.
-    Expands frontiers level-by-level, expanding the smaller frontier first each iteration.
-    
-    Args:
-        grid: 2D grid where 0 = walkable, 1 = wall
-        start: Starting (row, col) position
-        goal: Goal (row, col) position
-        
-    Returns:
-        SearchResult with optimal path, visited order, and metrics
-    """
+def bidirectional_bfs(
+    grid: List[List[int]],
+    start: Position,
+    goal: Position,
+    allow_diagonals: bool = False,
+    on_expand: Optional[Callable[[Position], None]] = None,
+) -> SearchResult:
+    """Bidirectional BFS: searches from both start and goal simultaneously."""
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
     if start == goal:
@@ -212,21 +223,25 @@ def bidirectional_bfs(grid: List[List[int]], start: Position, goal: Position) ->
     parents_b: Dict[Position, Position] = {}
     order: List[Position] = []
     meet: Optional[Position] = None
+    max_frontier = len(frontier_f) + len(frontier_b)
 
     while frontier_f and frontier_b and meet is None:
         # Expand forward frontier
         for _ in range(len(frontier_f)):
             current = frontier_f.popleft()
             order.append(current)
+            if on_expand:
+                on_expand(current)
             if current in visited_b:
                 meet = current
                 break
-            for nbr in _neighbors(grid, current):
+            for nbr in _neighbors(grid, current, allow_diagonals=allow_diagonals):
                 if nbr in visited_f:
                     continue
                 visited_f.add(nbr)
                 parents_f[nbr] = current
                 frontier_f.append(nbr)
+            max_frontier = max(max_frontier, len(frontier_f) + len(frontier_b))
         if meet:
             break
 
@@ -234,19 +249,22 @@ def bidirectional_bfs(grid: List[List[int]], start: Position, goal: Position) ->
         for _ in range(len(frontier_b)):
             current = frontier_b.popleft()
             order.append(current)
+            if on_expand:
+                on_expand(current)
             if current in visited_f:
                 meet = current
                 break
-            for nbr in _neighbors(grid, current):
+            for nbr in _neighbors(grid, current, allow_diagonals=allow_diagonals):
                 if nbr in visited_b:
                     continue
                 visited_b.add(nbr)
                 parents_b[nbr] = current
                 frontier_b.append(nbr)
+            max_frontier = max(max_frontier, len(frontier_f) + len(frontier_b))
 
     if meet is None:
         visited_union = len(visited_f | visited_b)
-        return SearchResult([], order, SearchMetrics(visited_count=visited_union, path_length=None))
+        return SearchResult([], order, SearchMetrics(visited_count=visited_union, path_length=None, max_frontier_size=max_frontier))
 
     path_forward = _reconstruct(parents_f, start, meet)
     path_backward = _reconstruct(parents_b, goal, meet)
@@ -254,14 +272,17 @@ def bidirectional_bfs(grid: List[List[int]], start: Position, goal: Position) ->
     path = path_forward + list(reversed(path_backward))[1:]
     steps = len(path) - 1
     visited_union = len(visited_f | visited_b)
-    return SearchResult(path, order, SearchMetrics(visited_count=visited_union, path_length=steps, path_cost=steps))
+    return SearchResult(path, order, SearchMetrics(visited_count=visited_union, path_length=steps, path_cost=steps, max_frontier_size=max_frontier))
 
 
 def dijkstra(
     grid: List[List[int]],
     start: Position,
     goal: Position,
-    cost_fn: Callable[[Position], float] = _default_cost_fn,
+    cost_fn: Optional[Callable[[Position], float]] = None,
+    weight_grid: Optional[List[List[float]]] = None,
+    allow_diagonals: bool = False,
+    on_expand: Optional[Callable[[Position], None]] = None,
 ) -> SearchResult:
     """Dijkstra's algorithm for shortest path on weighted grids.
     
@@ -273,6 +294,8 @@ def dijkstra(
         start: Starting (row, col) position
         goal: Goal (row, col) position
         cost_fn: Function returning cost to step on a position (default: 1 per step)
+        weight_grid: Optional parallel grid of step costs (ignored for walls)
+        allow_diagonals: Include diagonal moves if True
         
     Returns:
         SearchResult with optimal path, visited order, and metrics (includes path_cost)
@@ -280,7 +303,11 @@ def dijkstra(
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
+    if cost_fn is None:
+        cost_fn = _make_weighted_cost_fn(weight_grid)
+
     frontier: List[Tuple[float, Position]] = [(0.0, start)]
+    max_frontier = len(frontier)
     g_score: Dict[Position, float] = {start: 0.0}
     parents: Dict[Position, Position] = {}
     closed: Set[Position] = set()
@@ -292,9 +319,11 @@ def dijkstra(
             continue
         closed.add(current)
         order.append(current)
+        if on_expand:
+            on_expand(current)
         if current == goal:
             break
-        for nbr in _neighbors(grid, current):
+        for nbr in _neighbors(grid, current, allow_diagonals=allow_diagonals):
             if nbr in closed:
                 continue
             tentative = g + cost_fn(nbr)
@@ -302,14 +331,15 @@ def dijkstra(
                 g_score[nbr] = tentative
                 parents[nbr] = current
                 heappush(frontier, (tentative, nbr))
+        max_frontier = max(max_frontier, len(frontier))
 
     if goal not in closed:
-        return SearchResult([], order, SearchMetrics(visited_count=len(closed), path_length=None, path_cost=None))
+        return SearchResult([], order, SearchMetrics(visited_count=len(closed), path_length=None, path_cost=None, max_frontier_size=max_frontier))
 
     path = _reconstruct(parents, start, goal)
     steps = len(path) - 1
     cost = g_score[goal]
-    return SearchResult(path, order, SearchMetrics(visited_count=len(closed), path_length=steps, path_cost=cost))
+    return SearchResult(path, order, SearchMetrics(visited_count=len(closed), path_length=steps, path_cost=cost, max_frontier_size=max_frontier))
 
 
 def a_star(
@@ -317,7 +347,10 @@ def a_star(
     start: Position,
     goal: Position,
     heuristic: Callable[[Position, Position], float] = _manhattan,
-    cost_fn: Callable[[Position], float] = _default_cost_fn,
+    cost_fn: Optional[Callable[[Position], float]] = None,
+    weight_grid: Optional[List[List[float]]] = None,
+    allow_diagonals: bool = False,
+    on_expand: Optional[Callable[[Position], None]] = None,
 ) -> SearchResult:
     """A* search: combines actual cost and heuristic estimate for optimal, efficient pathfinding.
     
@@ -331,6 +364,8 @@ def a_star(
         goal: Goal (row, col) position
         heuristic: Function estimating cost to goal (default: Manhattan distance)
         cost_fn: Function returning cost to step on a position (default: 1 per step)
+        weight_grid: Optional parallel grid of step costs (ignored for walls)
+        allow_diagonals: Include diagonal moves if True
         
     Returns:
         SearchResult with optimal path, visited order, and metrics (includes path_cost)
@@ -338,7 +373,11 @@ def a_star(
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
+    if cost_fn is None:
+        cost_fn = _make_weighted_cost_fn(weight_grid)
+
     open_heap: List[Tuple[float, float, Position]] = []
+    max_frontier = 0
     g_score: Dict[Position, float] = {start: 0.0}
     parents: Dict[Position, Position] = {}
     closed: Set[Position] = set()
@@ -353,10 +392,12 @@ def a_star(
             continue
         closed.add(current)
         order.append(current)
+        if on_expand:
+            on_expand(current)
         if current == goal:
             break
 
-        for nbr in _neighbors(grid, current):
+        for nbr in _neighbors(grid, current, allow_diagonals=allow_diagonals):
             if nbr in closed:
                 continue
             tentative_g = g_score[current] + cost_fn(nbr)
@@ -368,14 +409,15 @@ def a_star(
             parents[nbr] = current
             # tie-breaker favors lower h (closer to goal)
             heappush(open_heap, (f_nbr, h_nbr, nbr))
+        max_frontier = max(max_frontier, len(open_heap))
 
     if goal not in closed:
-        return SearchResult([], order, SearchMetrics(visited_count=len(closed), path_length=None, path_cost=None))
+        return SearchResult([], order, SearchMetrics(visited_count=len(closed), path_length=None, path_cost=None, max_frontier_size=max_frontier))
 
     path = _reconstruct(parents, start, goal)
     steps = len(path) - 1
     cost = g_score[goal]
-    return SearchResult(path, order, SearchMetrics(visited_count=len(closed), path_length=steps, path_cost=cost))
+    return SearchResult(path, order, SearchMetrics(visited_count=len(closed), path_length=steps, path_cost=cost, max_frontier_size=max_frontier))
 
 
 def greedy_best_first(
@@ -383,6 +425,8 @@ def greedy_best_first(
     start: Position,
     goal: Position,
     heuristic: Callable[[Position, Position], float] = _manhattan,
+    allow_diagonals: bool = False,
+    on_expand: Optional[Callable[[Position], None]] = None,
 ) -> SearchResult:
     """Greedy Best-First Search: expands node closest to goal by heuristic estimate.
     
@@ -402,6 +446,7 @@ def greedy_best_first(
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
     open_heap: List[Tuple[float, Position]] = []
+    max_frontier = 0
     parents: Dict[Position, Position] = {}
     visited: Set[Position] = {start}
     order: List[Position] = []
@@ -411,24 +456,32 @@ def greedy_best_first(
     while open_heap:
         h, current = heappop(open_heap)
         order.append(current)
+        if on_expand:
+            on_expand(current)
         if current == goal:
             break
-        for nbr in _neighbors(grid, current):
+        for nbr in _neighbors(grid, current, allow_diagonals=allow_diagonals):
             if nbr in visited:
                 continue
             visited.add(nbr)
             parents[nbr] = current
             heappush(open_heap, (heuristic(nbr, goal), nbr))
+        max_frontier = max(max_frontier, len(open_heap))
 
     if goal not in visited:
-        return SearchResult([], order, SearchMetrics(visited_count=len(visited), path_length=None, path_cost=None))
+        return SearchResult([], order, SearchMetrics(visited_count=len(visited), path_length=None, path_cost=None, max_frontier_size=max_frontier))
 
     path = _reconstruct(parents, start, goal)
     steps = len(path) - 1
-    return SearchResult(path, order, SearchMetrics(visited_count=len(visited), path_length=steps, path_cost=steps))
+    return SearchResult(path, order, SearchMetrics(visited_count=len(visited), path_length=steps, path_cost=steps, max_frontier_size=max_frontier))
 
 
-def dead_end_filling(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
+def dead_end_filling(
+    grid: List[List[int]],
+    start: Position,
+    goal: Position,
+    allow_diagonals: bool = False,
+) -> SearchResult:
     """Dead-end filling: preprocesses maze by removing dead ends before searching.
     
     Identifies and fills (walls off) all dead ends and branches, leaving only the
@@ -449,7 +502,7 @@ def dead_end_filling(grid: List[List[int]], start: Position, goal: Position) -> 
     working = [row[:] for row in grid]
 
     def degree(pos: Position) -> int:
-        return sum(1 for _ in _neighbors(working, pos))
+        return sum(1 for _ in _neighbors(working, pos, allow_diagonals=allow_diagonals))
 
     queue: deque[Position] = deque()
     for r in range(len(working)):
@@ -467,7 +520,7 @@ def dead_end_filling(grid: List[List[int]], start: Position, goal: Position) -> 
         if not _is_walkable(working, pos):
             continue
         working[pos[0]][pos[1]] = 1  # fill this dead end
-        for nbr in _neighbors(working, pos):
+        for nbr in _neighbors(working, pos, allow_diagonals=allow_diagonals):
             if nbr in (start, goal):
                 continue
             if _is_walkable(working, nbr) and degree(nbr) <= 1:
@@ -477,5 +530,5 @@ def dead_end_filling(grid: List[List[int]], start: Position, goal: Position) -> 
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
     # Run BFS on the pruned maze to extract the corridor path.
-    result = bfs(working, start, goal)
+    result = bfs(working, start, goal, allow_diagonals=allow_diagonals)
     return SearchResult(result.path, result.visited_order, result.metrics)

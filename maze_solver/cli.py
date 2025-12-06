@@ -11,7 +11,7 @@ Grid format:
 
 import argparse
 import math
-from typing import Callable, Dict, List, Tuple
+from typing import Callable, Dict, List, Optional, Tuple
 
 from .baseline import (
     Position,
@@ -121,6 +121,8 @@ def heuristic_factory(name: str) -> Callable[[Position, Position], float]:
         return lambda a, b: abs(a[0] - b[0]) + abs(a[1] - b[1])
     if name == "euclidean":
         return lambda a, b: math.sqrt((a[0] - b[0]) ** 2 + (a[1] - b[1]) ** 2)
+    if name == "octile":
+        return lambda a, b: max(abs(a[0] - b[0]), abs(a[1] - b[1]))
     raise ValueError(f"Unknown heuristic '{name}'")
 
 
@@ -132,6 +134,9 @@ def run_solver(
     heuristic: str = "manhattan",
     hand: str = "right",
     preferred_heading: Position = (0, 1),
+    allow_diagonals: bool = False,
+    weight_grid: Optional[List[List[float]]] = None,
+    on_expand: Optional[Callable[[Position], None]] = None,
 ) -> SearchResult:
     """Execute a maze solving algorithm and return the result.
     
@@ -169,21 +174,21 @@ def run_solver(
     """
     algo = algo.lower()
     if algo == "bfs":
-        return bfs(grid, start, goal)
+        return bfs(grid, start, goal, allow_diagonals=allow_diagonals, on_expand=on_expand)
     if algo == "dfs":
-        return dfs_iterative(grid, start, goal)
+        return dfs_iterative(grid, start, goal, allow_diagonals=allow_diagonals, on_expand=on_expand)
     if algo == "bidirectional_bfs":
-        return bidirectional_bfs(grid, start, goal)
+        return bidirectional_bfs(grid, start, goal, allow_diagonals=allow_diagonals, on_expand=on_expand)
     if algo == "dijkstra":
-        return dijkstra(grid, start, goal)
+        return dijkstra(grid, start, goal, weight_grid=weight_grid, allow_diagonals=allow_diagonals, on_expand=on_expand)
     if algo == "a_star":
         h = heuristic_factory(heuristic)
-        return a_star(grid, start, goal, heuristic=h)
+        return a_star(grid, start, goal, heuristic=h, weight_grid=weight_grid, allow_diagonals=allow_diagonals, on_expand=on_expand)
     if algo == "greedy":
         h = heuristic_factory(heuristic)
-        return greedy_best_first(grid, start, goal, heuristic=h)
+        return greedy_best_first(grid, start, goal, heuristic=h, allow_diagonals=allow_diagonals, on_expand=on_expand)
     if algo == "dead_end_fill":
-        return dead_end_filling(grid, start, goal)
+        return dead_end_filling(grid, start, goal, allow_diagonals=allow_diagonals)
     if algo == "wall":
         return wall_follower(grid, start, goal, hand=hand)
     if algo == "pledge":
@@ -217,6 +222,8 @@ def format_result(result: SearchResult) -> str:
     ]
     if metrics.path_cost is not None:
         parts.append(f"Cost: {metrics.path_cost}")
+    if metrics.max_frontier_size is not None:
+        parts.append(f"Max frontier: {metrics.max_frontier_size}")
     lines = ["; ".join(parts), "Path:", str(result.path)]
     return "\n".join(lines)
 
@@ -232,10 +239,13 @@ def build_parser() -> argparse.ArgumentParser:
     
     OPTIONAL ARGUMENTS:
     --heuristic FUNC: For A*/greedy only (default: manhattan)
-                     Options: manhattan, euclidean
+                     Options: manhattan, euclidean, octile
     --hand RULE: For wall/pledge only (default: right)
                Options: right, left
     --heading ROW,COL: Preferred direction for pledge (default: 0,1 = east)
+    --diagonals: Allow diagonal moves (default: disabled)
+    --weights PATH: Optional weight grid (same shape as maze) with numeric step costs
+    --trace: Print visited order to stdout
     
     EXAMPLES:
     python -m maze_solver.cli --maze maze.txt --algo bfs --start 0,0 --goal 5,5
@@ -261,9 +271,12 @@ def build_parser() -> argparse.ArgumentParser:
     ])
     parser.add_argument("--start", required=True, type=parse_coord, help="Start coordinate row,col")
     parser.add_argument("--goal", required=True, type=parse_coord, help="Goal coordinate row,col")
-    parser.add_argument("--heuristic", default="manhattan", help="Heuristic (manhattan|euclidean) for A*/greedy")
+    parser.add_argument("--heuristic", default="manhattan", help="Heuristic (manhattan|euclidean|octile) for A*/greedy")
     parser.add_argument("--hand", default="right", help="Hand rule (right|left) for wall/pledge")
     parser.add_argument("--heading", default="0,1", help="Preferred heading row,col for pledge (default east)")
+    parser.add_argument("--diagonals", action="store_true", help="Allow diagonal moves")
+    parser.add_argument("--weights", help="Optional weight grid file (same shape as maze); values are step costs")
+    parser.add_argument("--trace", action="store_true", help="Print visited order")
     return parser
 
 
@@ -294,6 +307,7 @@ def main(argv: List[str] | None = None) -> int:
     parser = build_parser()
     args = parser.parse_args(argv)
     grid = load_grid_from_text(args.maze)
+    weight_grid = load_grid_from_text(args.weights) if args.weights else None
     preferred_heading = parse_coord(args.heading)
     result = run_solver(
         algo=args.algo,
@@ -303,8 +317,13 @@ def main(argv: List[str] | None = None) -> int:
         heuristic=args.heuristic,
         hand=args.hand,
         preferred_heading=preferred_heading,
+        allow_diagonals=args.diagonals,
+        weight_grid=weight_grid,
     )
     print(format_result(result))
+    if args.trace:
+        print("Visited order:")
+        print(result.visited_order)
     return 0
 
 

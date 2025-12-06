@@ -35,6 +35,18 @@ def test_run_solver_invokes_algorithms():
     assert result.path == bfs(grid, start, goal).path
 
 
+def test_run_solver_with_diagonals_shortens_path():
+    grid = [
+        [0, 0],
+        [0, 0],
+    ]
+    start, goal = (0, 0), (1, 1)
+
+    result = run_solver("bfs", grid, start, goal, allow_diagonals=True)
+
+    assert result.metrics.path_length == 1
+
+
 @pytest.mark.parametrize("path_exists", [True, False])
 def test_format_result_output(path_exists):
     if path_exists:
@@ -42,6 +54,7 @@ def test_format_result_output(path_exists):
             path_length = 3
             visited_count = 5
             path_cost = 3
+            max_frontier_size = 7
 
         class DummyResult:
             path = [(0, 0), (0, 1)]
@@ -50,10 +63,11 @@ def test_format_result_output(path_exists):
         text = format_result(DummyResult())
         assert "Path length: 3" in text
         assert "Visited: 5" in text
+        assert "Max frontier: 7" in text
     else:
         class DummyResult:
             path = []
-            metrics = type("M", (), {"path_length": None, "visited_count": 0, "path_cost": None})()
+            metrics = type("M", (), {"path_length": None, "visited_count": 0, "path_cost": None, "max_frontier_size": None})()
 
         text = format_result(DummyResult())
         assert "No path found" in text
