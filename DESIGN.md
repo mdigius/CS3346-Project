@@ -88,3 +88,4 @@
 - Confirm Python + pytest stack; set up virtualenv and install `requirements-dev.txt`.
 - Align on the maze input contract with teammates (grid format, start/goal, weights/diagonals flags).
 - Scaffold solver utilities (neighbors, validation, path reconstruction) and implement BFS first as the baseline against the milestones above.
+- Add sample mazes in `examples/` for CLI smoke tests.
