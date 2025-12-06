@@ -9,6 +9,7 @@ from .baseline import (
     dijkstra,
     greedy_best_first,
 )
+from .agent import pledge, tremaux, wall_follower
 
 __all__ = [
     "Position",
@@ -20,4 +21,7 @@ __all__ = [
     "dfs_iterative",
     "dijkstra",
     "greedy_best_first",
+    "wall_follower",
+    "pledge",
+    "tremaux",
 ]
