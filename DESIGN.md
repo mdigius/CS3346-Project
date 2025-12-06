@@ -4,6 +4,7 @@
 - Implement and compare multiple maze-solving strategies for 2D grid mazes (walls vs free cells) with optional weighted terrain and optional diagonal moves.
 - Support both global-view solvers (full grid known) and agent-view solvers (local perception only).
 - Provide clear hooks for visualization/metrics (steps explored, path length, memory).
+- Assume maze generation/loading is handled by teammates; focus here is the solver side consuming a provided grid API.
 
 ## Maze Representation
 - Grid: 2D array of cells; values: wall, open, optional weight.
@@ -43,7 +44,7 @@
 - For agent algorithms, store heading (N/E/S/W), turn counter (Pledge), and per-edge visit counts (Trémaux).
 
 ## Implementation Steps
-1. **Scaffold** maze model and utility functions (grid loader, neighbor generator, validity checks, path reconstruction).
+1. **Scaffold** solver-facing interfaces and utility functions (neighbor generator, validity checks, path reconstruction) that consume the maze structure provided by teammates.
 2. **Implement BFS** with tests on small grids; record explored count and path length.
 3. **Implement DFS (iterative)** for baseline and regression tests.
 4. **Add Bi-directional BFS** assuming reversible moves; verify intersection handling and path splicing.
@@ -59,6 +60,17 @@
 11. **Visualization Hooks**: callbacks or event stream for frontier expansion and path reconstruction.
 12. **API/CLI Layer**: load maze input, choose algorithm/heuristic, toggle diagonals/weights, output path + stats.
 
+## Milestones
+1. **Environment & Scaffolding**: set up Python env, install dev deps (pytest), create base package layout and DESIGN alignment.
+2. **Solver Interfaces**: define contract to consume teammate-provided mazes (grid shape, cell semantics, start/goal coords), plus neighbor/path utilities.
+3. **Baseline Solvers**: deliver BFS and iterative DFS with unit tests and basic metrics (path length, visited count).
+4. **Weighted/Heuristic Solvers**: add Dijkstra and A* with heuristic selector/tie-breakers; verify optimality vs BFS on unweighted cases.
+5. **Advanced Global Search**: implement Bi-directional BFS and Greedy Best-First; add tests for frontier meeting and non-optimal paths.
+6. **Agent Algorithms**: add Wall Follower, Pledge, and Trémaux; build fixtures showing success/failure on perfect vs loopy mazes.
+7. **Dead-End Filling & Instrumentation**: implement dead-end filling for known maps; standardize metrics collection across solvers.
+8. **Interface Layer**: provide CLI/API to load mazes, choose algorithm/heuristic, toggle diagonals/weights, and emit stats/path output.
+9. **Test/Perf Pass**: expand pytest coverage (including randomized/property checks if using hypothesis), run performance sanity sweeps, and polish docs.
+
 ## Testing Plan
 - Unit tests per algorithm on canonical mazes:
   - Straight corridor; simple branch; pillar/loop (to show wall-follower failure); open room; weighted detour; diagonal-allowed grid.
@@ -73,6 +85,6 @@
 - Memory blow-up on large open grids: allow early cutoff limits or chunked exploration for BFS/Dijkstra/A*.
 
 ## Next Steps
-- Decide target language/runtime and testing framework (e.g., JavaScript + npm test, Python + pytest).
-- Establish maze input format (text grid or JSON with weights) and output schema for paths/stats.
-- Set up scaffolding and begin with BFS implementation per the step list.
+- Confirm Python + pytest stack; set up virtualenv and install `requirements-dev.txt`.
+- Align on the maze input contract with teammates (grid format, start/goal, weights/diagonals flags).
+- Scaffold solver utilities (neighbors, validation, path reconstruction) and implement BFS first as the baseline against the milestones above.
