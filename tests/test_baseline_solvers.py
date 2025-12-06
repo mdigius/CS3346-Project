@@ -57,3 +57,26 @@ def test_returns_no_path_when_unreachable(grid, start, goal):
     for result in (bfs_result, dfs_result):
         assert result.path == []
         assert result.metrics.path_length is None
+
+
+def test_bfs_and_dfs_path_cost_equals_path_length():
+    """Test bfs and dfs_iterative correctly set path_cost equal to path_length for unweighted grids."""
+    grid = [
+        [0, 0, 0, 0],
+        [0, 1, 1, 0],
+        [0, 0, 0, 0],
+    ]
+    start, goal = (0, 0), (2, 3)
+
+    bfs_result = bfs(grid, start, goal)
+    dfs_result = dfs_iterative(grid, start, goal)
+
+    # Both algorithms should find a path
+    assert bfs_result.path, "BFS should find a path"
+    assert dfs_result.path, "DFS should find a path"
+
+    # For unweighted grids, path_cost should equal path_length
+    assert bfs_result.metrics.path_cost == bfs_result.metrics.path_length, \
+        "BFS path_cost should equal path_length on unweighted grids"
+    assert dfs_result.metrics.path_cost == dfs_result.metrics.path_length, \
+        "DFS path_cost should equal path_length on unweighted grids"
