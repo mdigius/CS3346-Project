@@ -51,6 +51,10 @@ venv/bin/python -m maze_solver.cli \
   --trace
 ```
 
+Additional sample mazes:
+- `examples/maze_perfect.txt`: perfect maze (tree) to compare optimal solvers vs wall follower success.
+- `examples/maze_loopy.txt`: loopy maze with optional weights (`examples/weights_loopy.txt`) to stress agent failures and weighted routing.
+
 ## Notes
 - `--diagonals` controls 8-way movement; use `--heuristic octile` for A*/greedy in that mode.
 - `--weights` expects a grid of numeric costs matching maze dimensions (see `examples/weights_small.txt`).
