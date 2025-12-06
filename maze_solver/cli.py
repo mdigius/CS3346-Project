@@ -28,6 +28,19 @@ from .agent import pledge, tremaux, wall_follower
 
 
 def parse_coord(text: str) -> Position:
+    """Parse a coordinate string in 'row,col' format into a Position tuple.
+    
+    Usage: parse_coord("5,3") -> (5, 3)
+    
+    Args:
+        text: String in format "row,col" with integer values
+        
+    Returns:
+        Position tuple (row, col)
+        
+    Raises:
+        ArgumentTypeError: If format is invalid or values aren't integers
+    """
     parts = text.split(",")
     if len(parts) != 2:
         raise argparse.ArgumentTypeError("Coordinates must be 'row,col'")
@@ -39,6 +52,32 @@ def parse_coord(text: str) -> Position:
 
 
 def load_grid_from_text(path: str) -> List[List[int]]:
+    """Load a maze grid from a text file.
+    
+    Supports two formats:
+    1. Space-separated: "0 0 1 0" on each line
+    2. Contiguous: "0010" on each line
+    
+    File format:
+    - Lines starting with '0' or '1' are maze rows
+    - Empty lines are skipped
+    - 0 = walkable cell, 1 = wall
+    - All rows must have equal width
+    
+    Example file content:
+        0 0 1
+        1 0 1
+        0 0 0
+    
+    Args:
+        path: File path to maze text file
+        
+    Returns:
+        2D list representing the grid
+        
+    Raises:
+        ValueError: If file is empty or rows have inconsistent lengths
+    """
     grid: List[List[int]] = []
     with open(path, "r", encoding="ascii") as fh:
         for line in fh:
@@ -60,6 +99,23 @@ def load_grid_from_text(path: str) -> List[List[int]]:
 
 
 def heuristic_factory(name: str) -> Callable[[Position, Position], float]:
+    """Create a heuristic function by name for A* and greedy search algorithms.
+    
+    Available heuristics:
+    - "manhattan": Sum of absolute differences (works well on grid-based mazes)
+    - "euclidean": Straight-line distance (more optimistic)
+    
+    Usage: h = heuristic_factory("manhattan")
+    
+    Args:
+        name: Heuristic name (case-insensitive)
+        
+    Returns:
+        Heuristic function taking two positions and returning estimated cost
+        
+    Raises:
+        ValueError: If heuristic name is unknown
+    """
     name = name.lower()
     if name == "manhattan":
         return lambda a, b: abs(a[0] - b[0]) + abs(a[1] - b[1])
@@ -77,6 +133,40 @@ def run_solver(
     hand: str = "right",
     preferred_heading: Position = (0, 1),
 ) -> SearchResult:
+    """Execute a maze solving algorithm and return the result.
+    
+    Available algorithms:
+    OPTIMAL (guaranteed shortest path):
+    - "bfs": Breadth-first search - best for unweighted grids
+    - "bidirectional_bfs": BFS from both start and goal - faster on large distances
+    - "dijkstra": Weighted path - uses cost function
+    - "a_star": Optimal with heuristic guidance - fastest optimal algorithm
+    
+    APPROXIMATE (may not find shortest path):
+    - "dfs": Depth-first search - memory efficient
+    - "greedy": Best-first by heuristic - fast but non-optimal
+    - "dead_end_fill": Preprocesses maze by removing dead ends
+    
+    AGENT-VIEW (without full map knowledge):
+    - "wall": Right/left hand rule - loops on mazes with islands
+    - "pledge": Hand rule + turn counter - escapes simple islands
+    - "tremaux": Visit counting - guaranteed to find path
+    
+    Args:
+        algo: Algorithm name (case-insensitive)
+        grid: 2D maze grid (0=walkable, 1=wall)
+        start: Starting position (row, col)
+        goal: Goal position (row, col)
+        heuristic: Heuristic for A*/greedy ("manhattan" or "euclidean")
+        hand: Hand for wall/pledge ("right" or "left")
+        preferred_heading: Initial direction for pledge ((0,1) east by default)
+        
+    Returns:
+        SearchResult with path, visited order, and metrics
+        
+    Raises:
+        ValueError: If algorithm name is unknown
+    """
     algo = algo.lower()
     if algo == "bfs":
         return bfs(grid, start, goal)
@@ -104,6 +194,20 @@ def run_solver(
 
 
 def format_result(result: SearchResult) -> str:
+    """Format a SearchResult into human-readable output for console display.
+    
+    Output includes:
+    - Path length: Number of steps from start to goal
+    - Visited: Total cells explored by the algorithm
+    - Cost: Total weighted cost (if applicable)
+    - Full path: List of (row, col) positions
+    
+    Args:
+        result: SearchResult from a maze solver
+        
+    Returns:
+        Formatted string ready for console output
+    """
     if not result.path:
         return "No path found."
     metrics = result.metrics
@@ -118,6 +222,29 @@ def format_result(result: SearchResult) -> str:
 
 
 def build_parser() -> argparse.ArgumentParser:
+    """Build the command-line argument parser for the maze solver CLI.
+    
+    REQUIRED ARGUMENTS:
+    --maze PATH: Path to maze text file (0=open cell, 1=wall)
+    --algo NAME: Algorithm to use (see run_solver for options)
+    --start ROW,COL: Starting position (e.g., "0,0")
+    --goal ROW,COL: Goal position (e.g., "5,5")
+    
+    OPTIONAL ARGUMENTS:
+    --heuristic FUNC: For A*/greedy only (default: manhattan)
+                     Options: manhattan, euclidean
+    --hand RULE: For wall/pledge only (default: right)
+               Options: right, left
+    --heading ROW,COL: Preferred direction for pledge (default: 0,1 = east)
+    
+    EXAMPLES:
+    python -m maze_solver.cli --maze maze.txt --algo bfs --start 0,0 --goal 5,5
+    python -m maze_solver.cli --maze maze.txt --algo a_star --start 0,0 --goal 5,5 --heuristic euclidean
+    python -m maze_solver.cli --maze maze.txt --algo wall --start 0,0 --goal 5,5 --hand left
+    
+    Returns:
+        Configured ArgumentParser instance
+    """
     parser = argparse.ArgumentParser(description="Maze solver CLI")
     parser.add_argument("--maze", required=True, help="Path to maze text file (0=open,1=wall)")
     parser.add_argument("--algo", required=True, choices=[
@@ -141,6 +268,29 @@ def build_parser() -> argparse.ArgumentParser:
 
 
 def main(argv: List[str] | None = None) -> int:
+    """Main entry point for the maze solver CLI.
+    
+    USAGE:
+    From command line:
+        python -m maze_solver.cli --maze examples/maze_small.txt --algo bfs --start 0,0 --goal 4,4
+    
+    Programmatically:
+        from maze_solver.cli import main
+        exit_code = main(["--maze", "maze.txt", "--algo", "a_star", "--start", "0,0", "--goal", "5,5"])
+    
+    WORKFLOW:
+    1. Parses command-line arguments
+    2. Loads maze from text file
+    3. Runs the specified algorithm
+    4. Prints formatted results (path, metrics, etc.)
+    5. Returns exit code (0 on success)
+    
+    Args:
+        argv: Command-line arguments (None = use sys.argv)
+        
+    Returns:
+        Exit code (0 for success, non-zero for error)
+    """
     parser = build_parser()
     args = parser.parse_args(argv)
     grid = load_grid_from_text(args.maze)

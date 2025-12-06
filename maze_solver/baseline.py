@@ -23,6 +23,15 @@ class SearchResult:
 
 
 def _is_walkable(grid: List[List[int]], pos: Position) -> bool:
+    """Check if a position is within grid bounds and is a walkable cell (value 0).
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        pos: (row, col) tuple to check
+        
+    Returns:
+        True if position is valid and walkable, False otherwise
+    """
     r, c = pos
     return (
         0 <= r < len(grid)
@@ -32,6 +41,15 @@ def _is_walkable(grid: List[List[int]], pos: Position) -> bool:
 
 
 def _neighbors(grid: List[List[int]], pos: Position) -> Iterable[Position]:
+    """Get all walkable neighboring positions in cardinal directions (N, E, S, W).
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        pos: Current (row, col) position
+        
+    Yields:
+        Neighboring (row, col) positions that are walkable, in deterministic order
+    """
     r, c = pos
     for dr, dc in [(-1, 0), (0, 1), (1, 0), (0, -1)]:  # N, E, S, W (deterministic)
         nxt = (r + dr, c + dc)
@@ -40,6 +58,16 @@ def _neighbors(grid: List[List[int]], pos: Position) -> Iterable[Position]:
 
 
 def _reconstruct(parent: Dict[Position, Position], start: Position, goal: Position) -> List[Position]:
+    """Reconstruct the path from start to goal using the parent dictionary.
+    
+    Args:
+        parent: Dictionary mapping each position to its parent in the search tree
+        start: Starting position
+        goal: Goal position
+        
+    Returns:
+        List of positions from start to goal, inclusive
+    """
     path: List[Position] = [goal]
     cur = goal
     while cur != start:
@@ -50,15 +78,43 @@ def _reconstruct(parent: Dict[Position, Position], start: Position, goal: Positi
 
 
 def _manhattan(a: Position, b: Position) -> int:
+    """Calculate Manhattan distance between two positions.
+    
+    Args:
+        a: First (row, col) position
+        b: Second (row, col) position
+        
+    Returns:
+        Manhattan distance (sum of absolute differences)
+    """
     return abs(a[0] - b[0]) + abs(a[1] - b[1])
 
 
 def _default_cost_fn(_: Position) -> int:
+    """Default cost function for unweighted grids; each step costs 1.
+    
+    Args:
+        _: Position (ignored for uniform cost)
+        
+    Returns:
+        Constant cost of 1
+    """
     return 1
 
 
 def bfs(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
-    """Breadth-first search for shortest path on an unweighted grid."""
+    """Breadth-first search for shortest path on an unweighted grid.
+    
+    Explores level-by-level, guaranteeing the shortest path in terms of steps.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        
+    Returns:
+        SearchResult with path, visited order, and metrics (visited count, path length, cost)
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -88,7 +144,19 @@ def bfs(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
 
 
 def dfs_iterative(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
-    """Iterative depth-first search; returns any found path (not guaranteed shortest)."""
+    """Iterative depth-first search; returns a found path (not guaranteed shortest).
+    
+    Uses a stack to explore deeply before backtracking. Path length may be longer
+    than optimal but uses less memory than BFS for deep mazes.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        
+    Returns:
+        SearchResult with path (possibly non-optimal), visited order, and metrics
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -118,7 +186,19 @@ def dfs_iterative(grid: List[List[int]], start: Position, goal: Position) -> Sea
 
 
 def bidirectional_bfs(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
-    """Bidirectional BFS for undirected grids; faster on large distances when start/goal known."""
+    """Bidirectional BFS: searches from both start and goal simultaneously.
+    
+    Meets in the middle for faster search on large distances. Optimal path guaranteed.
+    Expands frontiers level-by-level, expanding the smaller frontier first each iteration.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        
+    Returns:
+        SearchResult with optimal path, visited order, and metrics
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
     if start == goal:
@@ -183,7 +263,20 @@ def dijkstra(
     goal: Position,
     cost_fn: Callable[[Position], float] = _default_cost_fn,
 ) -> SearchResult:
-    """Dijkstra for weighted grids; walls are defined by the grid, costs by cost_fn."""
+    """Dijkstra's algorithm for shortest path on weighted grids.
+    
+    Guarantees optimal path with non-negative costs. Explores nodes in order
+    of increasing cumulative cost from start.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        cost_fn: Function returning cost to step on a position (default: 1 per step)
+        
+    Returns:
+        SearchResult with optimal path, visited order, and metrics (includes path_cost)
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -226,7 +319,22 @@ def a_star(
     heuristic: Callable[[Position, Position], float] = _manhattan,
     cost_fn: Callable[[Position], float] = _default_cost_fn,
 ) -> SearchResult:
-    """A* search; optimal when heuristic is admissible/consistent and costs are non-negative."""
+    """A* search: combines actual cost and heuristic estimate for optimal, efficient pathfinding.
+    
+    Optimal when heuristic is admissible (never overestimates) and consistent, with
+    non-negative step costs. Uses f = g + h (actual cost + estimated remaining cost).
+    Generally faster than Dijkstra on large mazes due to goal-directed search.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        heuristic: Function estimating cost to goal (default: Manhattan distance)
+        cost_fn: Function returning cost to step on a position (default: 1 per step)
+        
+    Returns:
+        SearchResult with optimal path, visited order, and metrics (includes path_cost)
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -276,7 +384,20 @@ def greedy_best_first(
     goal: Position,
     heuristic: Callable[[Position, Position], float] = _manhattan,
 ) -> SearchResult:
-    """Greedy Best-First Search; fast but not optimal."""
+    """Greedy Best-First Search: expands node closest to goal by heuristic estimate.
+    
+    Fast but not guaranteed to find optimal path. Useful for quick approximations
+    when optimality is not required. Does not consider actual path cost.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        heuristic: Function estimating cost to goal (default: Manhattan distance)
+        
+    Returns:
+        SearchResult with found path (possibly non-optimal), visited order, and metrics
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -308,7 +429,20 @@ def greedy_best_first(
 
 
 def dead_end_filling(grid: List[List[int]], start: Position, goal: Position) -> SearchResult:
-    """Dead-end filling on a known map; prunes leaves to extract corridor path if one exists."""
+    """Dead-end filling: preprocesses maze by removing dead ends before searching.
+    
+    Identifies and fills (walls off) all dead ends and branches, leaving only the
+    corridor path(s). Then runs BFS on the pruned maze. Effective for mazes with
+    many dead ends. Returns no path if start/goal became disconnected.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        
+    Returns:
+        SearchResult with path (from pruned maze), visited order, and metrics
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 

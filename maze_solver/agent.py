@@ -10,16 +10,40 @@ Heading = Tuple[int, int]  # delta row, delta col
 
 
 def _turn_right(heading: Heading) -> Heading:
+    """Rotate heading 90 degrees clockwise.
+    
+    Args:
+        heading: Current direction as (dr, dc)
+        
+    Returns:
+        New heading rotated 90° clockwise
+    """
     dr, dc = heading
     return (-dc, dr)
 
 
 def _turn_left(heading: Heading) -> Heading:
+    """Rotate heading 90 degrees counter-clockwise.
+    
+    Args:
+        heading: Current direction as (dr, dc)
+        
+    Returns:
+        New heading rotated 90° counter-clockwise
+    """
     dr, dc = heading
     return (dc, -dr)
 
 
 def _turn_back(heading: Heading) -> Heading:
+    """Rotate heading 180 degrees (face backward).
+    
+    Args:
+        heading: Current direction as (dr, dc)
+        
+    Returns:
+        New heading rotated 180° (opposite direction)
+    """
     dr, dc = heading
     return (-dr, -dc)
 
@@ -31,7 +55,21 @@ def wall_follower(
     hand: str = "right",
     max_steps: int = 10_000,
 ) -> SearchResult:
-    """Wall-following (left/right hand rule); succeeds only on simply connected mazes."""
+    """Wall-following (left/right hand rule); succeeds only on simply connected mazes.
+    
+    Keeps one hand on a wall and follows it. Guaranteed to exit simple mazes but may
+    loop infinitely in mazes with islands. Tracks (position, heading) states to detect loops.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        hand: "right" for right-hand rule, "left" for left-hand rule (default: "right")
+        max_steps: Maximum steps before giving up (default: 10,000)
+        
+    Returns:
+        SearchResult with path (if found), visited order, and metrics
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -82,7 +120,23 @@ def pledge(
     hand: str = "right",
     max_steps: int = 20_000,
 ) -> SearchResult:
-    """Pledge algorithm to escape loops using a heading + turn counter."""
+    """Pledge algorithm to escape loops using a heading + turn counter.
+    
+    Tries to move in a preferred direction. When blocked, engages wall-following while
+    tracking cumulative turns. Returns to preferred direction when turn_count returns to 0.
+    Escapes islands by resetting when heading returns to preferred after untangling.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        preferred_heading: Direction to maintain (default: (0, 1) = east)
+        hand: "right" for right-hand rule, "left" for left-hand rule (default: "right")
+        max_steps: Maximum steps before giving up (default: 20,000)
+        
+    Returns:
+        SearchResult with path (if found), visited order, and metrics
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -148,7 +202,21 @@ def tremaux(
     goal: Position,
     max_steps: int = 50_000,
 ) -> SearchResult:
-    """Trémaux algorithm using visit counts per cell to guarantee termination on finite mazes."""
+    """Trémaux algorithm using visit counts per cell to guarantee termination on finite mazes.
+    
+    Uses depth-first search with per-cell visit counting. Always explores unvisited neighbors
+    first, then once-visited neighbors. When no valid move exists, backtracks. Guaranteed to
+    find a path or determine none exists, without need for full map knowledge.
+    
+    Args:
+        grid: 2D grid where 0 = walkable, 1 = wall
+        start: Starting (row, col) position
+        goal: Goal (row, col) position
+        max_steps: Maximum steps before giving up (default: 50,000)
+        
+    Returns:
+        SearchResult with path (if found), visited order, and metrics
+    """
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
