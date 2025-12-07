@@ -2,7 +2,20 @@ import pygame
 import sys
 import random
 from maze_generator.maze_generator import generate_maze
-from maze_solver import bfs, a_star, dfs_iterative, greedy_best_first, extract_start_goal, MazeFormatError
+from maze_solver import (
+    bfs,
+    a_star,
+    bidirectional_bfs,
+    dead_end_filling,
+    dfs_iterative,
+    dijkstra,
+    greedy_best_first,
+    wall_follower,
+    pledge,
+    tremaux,
+    extract_start_goal,
+    MazeFormatError,
+)
 
 pygame.init()
 
@@ -115,6 +128,63 @@ class Button:
                 self.action_func()
 
 
+class Dropdown:
+    def __init__(self, x, y, width, item_height, items, on_select):
+        self.button_rect = pygame.Rect(x, y, width, item_height)
+        self.items = items  # list of (label, value, is_header)
+        self.on_select = on_select
+        self.open = False
+        self.item_height = item_height
+        self.color = (50, 50, 50)
+        self.hover_color = (100, 100, 100)
+        self.text_color = (255, 255, 255)
+
+    def draw(self, surface, current_label):
+        # main button
+        mouse_pos = pygame.mouse.get_pos()
+        col = self.hover_color if self.button_rect.collidepoint(mouse_pos) else self.color
+        pygame.draw.rect(surface, col, self.button_rect, border_radius=5)
+        pygame.draw.rect(surface, (200, 200, 200), self.button_rect, 2, border_radius=5)
+        text_surf = font.render(current_label, True, self.text_color)
+        text_rect = text_surf.get_rect(center=self.button_rect.center)
+        surface.blit(text_surf, text_rect)
+
+        if self.open:
+            # dropdown panel
+            panel_height = self.item_height * len(self.items)
+            panel_rect = pygame.Rect(self.button_rect.x, self.button_rect.y + self.item_height, self.button_rect.width, panel_height)
+            pygame.draw.rect(surface, (30, 30, 30), panel_rect, border_radius=4)
+            pygame.draw.rect(surface, (200, 200, 200), panel_rect, 1, border_radius=4)
+            for idx, (label, value, is_header) in enumerate(self.items):
+                item_rect = pygame.Rect(panel_rect.x, panel_rect.y + idx * self.item_height, panel_rect.width, self.item_height)
+                if is_header:
+                    header_surf = font.render(label, True, (180, 220, 250))
+                    surface.blit(header_surf, (item_rect.x + 6, item_rect.y + 6))
+                else:
+                    ic = self.hover_color if item_rect.collidepoint(mouse_pos) else self.color
+                    pygame.draw.rect(surface, ic, item_rect)
+                    pygame.draw.rect(surface, (100, 100, 100), item_rect, 1)
+                    item_surf = font.render(label, True, self.text_color)
+                    surface.blit(item_surf, (item_rect.x + 6, item_rect.y + 6))
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.button_rect.collidepoint(event.pos):
+                self.open = not self.open
+                return True
+            if self.open:
+                for idx, (label, value, is_header) in enumerate(self.items):
+                    if is_header:
+                        continue
+                    item_rect = pygame.Rect(self.button_rect.x, self.button_rect.y + self.item_height * (idx + 1), self.button_rect.width, self.item_height)
+                    if item_rect.collidepoint(event.pos):
+                        self.on_select(value)
+                        self.open = False
+                        return True
+                self.open = False
+        return False
+
+
 # ---------------------------
 #   BUTTON ACTIONS
 # ---------------------------
@@ -159,8 +229,14 @@ def solve_maze():
     algos = [
         ("BFS", lambda: bfs(normalized, start, goal)),
         ("DFS", lambda: dfs_iterative(normalized, start, goal)),
+        ("Bi-BFS", lambda: bidirectional_bfs(normalized, start, goal)),
+        ("Dijkstra", lambda: dijkstra(normalized, start, goal)),
         ("A*", lambda: a_star(normalized, start, goal)),
         ("Greedy", lambda: greedy_best_first(normalized, start, goal)),
+        ("Dead-End Fill", lambda: dead_end_filling(normalized, start, goal)),
+        ("Wall Follower", lambda: wall_follower(normalized, start, goal)),
+        ("Pledge", lambda: pledge(normalized, start, goal)),
+        ("Trémaux", lambda: tremaux(normalized, start, goal)),
     ]
     for name, fn in algos:
         result = fn()
@@ -176,7 +252,8 @@ def solve_maze():
         if best is None or key < best[0]:
             best = (key, sol["name"])
     best_algo = best[1] if best else None
-    selected_algo = 0 if solutions else None
+    if selected_algo is None or selected_algo >= len(solutions):
+        selected_algo = 0 if solutions else None
     anim_step = 0
     playing = True
     robot_pos = start
@@ -184,17 +261,8 @@ def solve_maze():
 
 def select_next_algo():
     global selected_algo, anim_step, playing, robot_pos
-    if not solutions:
-        return
-    selected_algo = (selected_algo + 1) % len(solutions)
-    anim_step = 0
-    playing = True
-    # reset robot to start for new algo
-    try:
-        _, start, _ = extract_start_goal(maze_map)
-        robot_pos = start
-    except MazeFormatError:
-        robot_pos = None
+    # unused with dropdown; kept for compatibility
+    pass
 
 
 # ---------------------------
@@ -203,7 +271,34 @@ def select_next_algo():
 button_plus = Button(20, 20, 120, 40, "+2 Size", increase_size)
 button_minus = Button(160, 20, 120, 40, "-2 Size", decrease_size)
 button_solve = Button(300, 20, 120, 40, "Solve", lambda: solve_maze())
-button_next = Button(440, 20, 120, 40, "Next Algo", lambda: select_next_algo())
+dropdown_items = [
+    ("Global", None, True),
+    ("BFS", 0, False),
+    ("DFS", 1, False),
+    ("Bi-BFS", 2, False),
+    ("Dijkstra", 3, False),
+    ("A*", 4, False),
+    ("Greedy", 5, False),
+    ("Dead-End Fill", 6, False),
+    ("Agent", None, True),
+    ("Wall Follower", 7, False),
+    ("Pledge", 8, False),
+    ("Trémaux", 9, False),
+]
+def on_select_algo(idx):
+    global selected_algo, anim_step, playing, robot_pos
+    if idx is None or not solutions or idx >= len(solutions):
+        return
+    selected_algo = idx
+    anim_step = 0
+    playing = True
+    try:
+        _, start, _ = extract_start_goal(maze_map)
+        robot_pos = start
+    except MazeFormatError:
+        robot_pos = None
+
+dropdown = Dropdown(WINDOW_WIDTH - 180, 20, 160, 32, dropdown_items, on_select_algo)
 
 
 # ---------------------------
@@ -232,7 +327,7 @@ while running:
         button_plus.check_click(event)
         button_minus.check_click(event)
         button_solve.check_click(event)
-        button_next.check_click(event)
+        dropdown.handle_event(event)
 
     if playing and solutions and selected_algo is not None:
         current = solutions[selected_algo]["result"]
@@ -247,11 +342,12 @@ while running:
         for x in range(0, WINDOW_WIDTH, TILE_SIZE):
             screen.blit(water_img, (x, y))
 
-    # Draw buttons
+    # Draw controls first (above maze)
     button_plus.draw(screen)
     button_minus.draw(screen)
     button_solve.draw(screen)
-    button_next.draw(screen)
+    current_label = "Algo" if selected_algo is None or not solutions else solutions[selected_algo]["name"]
+    dropdown.draw(screen, current_label)
 
     # Draw borders
     for col in range(map_cols):
@@ -310,8 +406,8 @@ while running:
         screen.blit(robot_img, (x_pos, y_pos))
 
     # Draw sidebar stats
-    stats_x = start_x
-    stats_y = start_y + TILE_SIZE + map_rows * TILE_SIZE + 20
+    stats_x = WINDOW_WIDTH - 220
+    stats_y = 70
     status_lines = []
     if solve_error:
         status_lines.append(f"Error: {solve_error}")
