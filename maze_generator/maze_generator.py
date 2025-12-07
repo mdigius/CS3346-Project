@@ -1,9 +1,23 @@
 import random
-def generate_maze(rows, columns):
+def generate_maze(rows, columns,set_seed=None):
     #maze parameter, must be odd numbers
-    row = rows
-    col = columns
+    if rows %2 ==0:
+        print("Please set the number of rows to an odd number")
+        row = rows + 1
+    else:        
+        row = rows
 
+
+    if columns %2 ==0:
+        print("Please set the number of columns to an odd number")
+        col = columns + 1
+    else:
+        col = columns
+   
+    #set random seed
+    if set_seed is not None:
+        random.seed(set_seed)
+        print(f"Set seed to: {set_seed}")
     #initialize the maze by setting every tile to wall
     maze = []
     for x in range(col):
