@@ -11,6 +11,7 @@ from .baseline import (
     dead_end_filling,
 )
 from .agent import pledge, tremaux, wall_follower
+from .utils import extract_start_goal, MazeFormatError
 
 __all__ = [
     "Position",
@@ -26,4 +27,6 @@ __all__ = [
     "wall_follower",
     "pledge",
     "tremaux",
+    "extract_start_goal",
+    "MazeFormatError",
 ]
