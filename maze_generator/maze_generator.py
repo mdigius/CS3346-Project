@@ -6,7 +6,7 @@ def generate_maze(rows, columns,set_seed=None):
         row = rows + 1
     else:        
         row = rows
-
+        
     if columns %2 ==0:
         print("Please set the number of columns to an odd number")
         col = columns + 1
@@ -17,7 +17,6 @@ def generate_maze(rows, columns,set_seed=None):
     if set_seed is not None:
         random.seed(set_seed)
         print(f"Set seed to: {set_seed}")
-        
     #initialize the maze by setting every tile to wall
     maze = []
     for x in range(col):
