@@ -1,6 +1,5 @@
 import pygame
 import sys
-import random
 from maze_generator.maze_generator import generate_maze
 from maze_solver import (
     bfs,
@@ -17,417 +16,513 @@ from maze_solver import (
     MazeFormatError,
 )
 
+# --- INITIALIZATION ---
 pygame.init()
 
-# Configuration
-SPRITE_SIZE = 16      
+# --- CONFIGURATION & CONSTANTS ---
+WINDOW_WIDTH = 1280
+WINDOW_HEIGHT = 720
+SIDEBAR_WIDTH = 320  # Dedicated space for UI
+MAZE_AREA_WIDTH = WINDOW_WIDTH - SIDEBAR_WIDTH
+
+SPRITE_SIZE = 16
 BASE_SCALE = 1.75
 SCALE = BASE_SCALE
 TILE_SIZE = int(SPRITE_SIZE * SCALE)
 
-WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
-screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
-pygame.display.set_caption("Maze Solver")
-font = pygame.font.SysFont('Arial', 20, bold=True)
+# Colors
+COLOR_BG = (30, 41, 59)             # Dark Slate
+COLOR_PANEL = (51, 65, 85)          # Lighter Slate
+COLOR_ACCENT = (56, 189, 248)       # Cyan
+COLOR_BUTTON = (71, 85, 105)        # Button Base
+COLOR_BUTTON_HOVER = (100, 116, 139)
+COLOR_TEXT_MAIN = (241, 245, 249)
+COLOR_TEXT_DIM = (148, 163, 184)
+COLOR_SUCCESS = (34, 197, 94)       # Green
+COLOR_VISITED = (56, 189, 248, 100) # Transparent Blue
+COLOR_PATH = (234, 179, 8, 160)     # Transparent Yellow
 
-# ---------------------------
-#  MAZE SIZE (now dynamic)
-# ---------------------------
+# Fonts
+font_title = pygame.font.SysFont('Segoe UI', 28, bold=True)
+font_main = pygame.font.SysFont('Segoe UI', 18)
+font_small = pygame.font.SysFont('Segoe UI', 15)
+font_bold = pygame.font.SysFont('Segoe UI', 18, bold=True)
+
+screen = pygame.display.set_mode((WINDOW_WIDTH, WINDOW_HEIGHT))
+pygame.display.set_caption("Maze Solver Algorithm Visualizer")
+
+# --- GLOBAL STATE ---
 ROWS = 18
 COLS = 18
 maze_map = generate_maze(ROWS, COLS)
+
+# Logic State
 solutions = []
-selected_algo = None
-best_algo = None
+selected_algo_idx = 0
+current_algo_name = "BFS"
 anim_step = 0
 playing = False
 solve_error = ""
 robot_pos = None
+animation_speed = 1.0  # Steps per frame (float)
 
-# Recalculate centering whenever maze size updates
-def recalc_center():
-    global map_rows, map_cols, structure_width, structure_height, start_x, start_y, SCALE, TILE_SIZE
-    map_rows = len(maze_map)
-    map_cols = len(maze_map[0])
+# Stats History
+best_path_len = float('inf')
+best_algo_name = "-"
 
-    scale_for_width = (WINDOW_WIDTH - 80) / (SPRITE_SIZE * (map_cols + 2))
-    scale_for_height = (WINDOW_HEIGHT - 140) / (SPRITE_SIZE * (map_rows + 2))
-    SCALE = min(BASE_SCALE, scale_for_width, scale_for_height)
-    TILE_SIZE = int(SPRITE_SIZE * SCALE)
-    apply_scale(SCALE)
-
-    structure_width = (map_cols + 2) * TILE_SIZE
-    structure_height = (map_rows + 2) * TILE_SIZE
-
-    start_x = max(20, (WINDOW_WIDTH - structure_width) // 2)
-    start_y = max(80, (WINDOW_HEIGHT - structure_height) // 2)
-
-# Get image from sprite sheet
-def get_image(sheet, frame_col, frame_row, width, height, scale):
-    image = pygame.Surface((width, height)).convert_alpha()
-    image.blit(sheet, (0, 0), (frame_col * width, frame_row * height, width, height))
-    image = pygame.transform.scale(image, (width * scale, height * scale))
-    image.set_colorkey((0, 0, 0)) 
-    return image
-
-
-def apply_scale(scale):
-    """Rescale sprite assets to the current tile size."""
-    global grass_img, bush_img, water_img, chest_img, robot_img
-    global border_top_l, border_top_m, border_top_r
-    global border_side_l, border_side_r, border_bot_l, border_bot_m, border_bot_r
-    global TILE_SIZE
-
-    tile = int(SPRITE_SIZE * scale)
-    TILE_SIZE = tile
-
-    grass_img = get_image(sprite_sheet, 1, 1, SPRITE_SIZE, SPRITE_SIZE, scale)
-    bush_img = get_image(sprite_sheet, 8, 26, SPRITE_SIZE, SPRITE_SIZE, scale)
-    water_img = get_image(sprite_sheet, 12, 13, SPRITE_SIZE, SPRITE_SIZE, scale)
-    chest_img = get_image(sprite_sheet, 8, 49, SPRITE_SIZE, SPRITE_SIZE, scale)
-
-    border_top_l = get_image(sprite_sheet, 0, 12, SPRITE_SIZE, SPRITE_SIZE, scale)
-    border_top_m = get_image(sprite_sheet, 1, 12, SPRITE_SIZE, SPRITE_SIZE, scale)
-    border_top_r = get_image(sprite_sheet, 2, 12, SPRITE_SIZE, SPRITE_SIZE, scale)
-    border_side_l = get_image(sprite_sheet, 0, 13, SPRITE_SIZE, SPRITE_SIZE, scale)
-    border_side_r = get_image(sprite_sheet, 2, 13, SPRITE_SIZE, SPRITE_SIZE, scale)
-    border_bot_l = get_image(sprite_sheet, 0, 14, SPRITE_SIZE, SPRITE_SIZE, scale)
-    border_bot_m = get_image(sprite_sheet, 1, 14, SPRITE_SIZE, SPRITE_SIZE, scale)
-    border_bot_r = get_image(sprite_sheet, 2, 14, SPRITE_SIZE, SPRITE_SIZE, scale)
-
-    robot_img = pygame.transform.scale(robot_raw, (tile, tile))
-
-
-# ---------------------------
-#   UI BUTTON CLASS
-# ---------------------------
-class Button:
-    def __init__(self, x, y, width, height, text, action_func):
-        self.rect = pygame.Rect(x, y, width, height)
-        self.text = text
-        self.action_func = action_func
-        self.color = (50, 50, 50)
-        self.hover_color = (100, 100, 100)
-        self.text_color = (255, 255, 255)
-
-    def draw(self, surface):
-        mouse_pos = pygame.mouse.get_pos()
-        col = self.hover_color if self.rect.collidepoint(mouse_pos) else self.color
-        
-        pygame.draw.rect(surface, col, self.rect, border_radius=5)
-        pygame.draw.rect(surface, (200, 200, 200), self.rect, 2, border_radius=5)
-
-        text_surf = font.render(self.text, True, self.text_color)
-        text_rect = text_surf.get_rect(center=self.rect.center)
-        surface.blit(text_surf, text_rect)
-
-    def check_click(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.rect.collidepoint(event.pos):
-                self.action_func()
-
-
-class Dropdown:
-    def __init__(self, x, y, width, item_height, items, on_select):
-        self.button_rect = pygame.Rect(x, y, width, item_height)
-        self.items = items  # list of (label, value, is_header)
-        self.on_select = on_select
-        self.open = False
-        self.item_height = item_height
-        self.color = (50, 50, 50)
-        self.hover_color = (100, 100, 100)
-        self.text_color = (255, 255, 255)
-
-    def draw(self, surface, current_label):
-        # main button
-        mouse_pos = pygame.mouse.get_pos()
-        col = self.hover_color if self.button_rect.collidepoint(mouse_pos) else self.color
-        pygame.draw.rect(surface, col, self.button_rect, border_radius=5)
-        pygame.draw.rect(surface, (200, 200, 200), self.button_rect, 2, border_radius=5)
-        text_surf = font.render(current_label, True, self.text_color)
-        text_rect = text_surf.get_rect(center=self.button_rect.center)
-        surface.blit(text_surf, text_rect)
-
-        if self.open:
-            # dropdown panel
-            panel_height = self.item_height * len(self.items)
-            panel_rect = pygame.Rect(self.button_rect.x, self.button_rect.y + self.item_height, self.button_rect.width, panel_height)
-            pygame.draw.rect(surface, (30, 30, 30), panel_rect, border_radius=4)
-            pygame.draw.rect(surface, (200, 200, 200), panel_rect, 1, border_radius=4)
-            for idx, (label, value, is_header) in enumerate(self.items):
-                item_rect = pygame.Rect(panel_rect.x, panel_rect.y + idx * self.item_height, panel_rect.width, self.item_height)
-                if is_header:
-                    header_surf = font.render(label, True, (180, 220, 250))
-                    surface.blit(header_surf, (item_rect.x + 6, item_rect.y + 6))
-                else:
-                    ic = self.hover_color if item_rect.collidepoint(mouse_pos) else self.color
-                    pygame.draw.rect(surface, ic, item_rect)
-                    pygame.draw.rect(surface, (100, 100, 100), item_rect, 1)
-                    item_surf = font.render(label, True, self.text_color)
-                    surface.blit(item_surf, (item_rect.x + 6, item_rect.y + 6))
-
-    def handle_event(self, event):
-        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
-            if self.button_rect.collidepoint(event.pos):
-                self.open = not self.open
-                return True
-            if self.open:
-                for idx, (label, value, is_header) in enumerate(self.items):
-                    if is_header:
-                        continue
-                    item_rect = pygame.Rect(self.button_rect.x, self.button_rect.y + self.item_height * (idx + 1), self.button_rect.width, self.item_height)
-                    if item_rect.collidepoint(event.pos):
-                        self.on_select(value)
-                        self.open = False
-                        return True
-                self.open = False
-        return False
-
-
-# ---------------------------
-#   BUTTON ACTIONS
-# ---------------------------
-def increase_size():
-    global ROWS, COLS, maze_map
-    ROWS += 2
-    COLS += 2
-    maze_map = generate_maze(ROWS, COLS)
-    recalc_center()
-    reset_solution_state()
-
-def decrease_size():
-    global ROWS, COLS, maze_map
-    if ROWS > 6 and COLS > 6:  # keep it valid
-        ROWS -= 2
-        COLS -= 2
-        maze_map = generate_maze(ROWS, COLS)
-        recalc_center()
-        reset_solution_state()
-
-
-def reset_solution_state():
-    global solutions, selected_algo, anim_step, playing, best_algo, solve_error, robot_pos
-    solutions = []
-    selected_algo = None
-    best_algo = None
-    anim_step = 0
-    playing = False
-    solve_error = ""
-    robot_pos = None
-
-
-def solve_maze():
-    global solutions, selected_algo, anim_step, playing, best_algo, solve_error, robot_pos
-    reset_solution_state()
-    try:
-        normalized, start, goal = extract_start_goal(maze_map)
-    except MazeFormatError as exc:
-        solve_error = str(exc)
-        return
-
-    algos = [
-        ("BFS", lambda: bfs(normalized, start, goal)),
-        ("DFS", lambda: dfs_iterative(normalized, start, goal)),
-        ("Bi-BFS", lambda: bidirectional_bfs(normalized, start, goal)),
-        ("Dijkstra", lambda: dijkstra(normalized, start, goal)),
-        ("A*", lambda: a_star(normalized, start, goal)),
-        ("Greedy", lambda: greedy_best_first(normalized, start, goal)),
-        ("Dead-End Fill", lambda: dead_end_filling(normalized, start, goal)),
-        ("Wall Follower", lambda: wall_follower(normalized, start, goal)),
-        ("Pledge", lambda: pledge(normalized, start, goal)),
-        ("Trémaux", lambda: tremaux(normalized, start, goal)),
-    ]
-    for name, fn in algos:
-        result = fn()
-        solutions.append({"name": name, "result": result})
-
-    # pick best by cost, then path_length
-    best = None
-    for sol in solutions:
-        res = sol["result"]
-        if not res.path:
-            continue
-        key = (res.metrics.path_cost if res.metrics.path_cost is not None else float("inf"), res.metrics.path_length or float("inf"))
-        if best is None or key < best[0]:
-            best = (key, sol["name"])
-    best_algo = best[1] if best else None
-    if selected_algo is None or selected_algo >= len(solutions):
-        selected_algo = 0 if solutions else None
-    anim_step = 0
-    playing = True
-    robot_pos = start
-
-
-def select_next_algo():
-    global selected_algo, anim_step, playing, robot_pos
-    # unused with dropdown; kept for compatibility
-    pass
-
-
-# ---------------------------
-#   CREATE BUTTONS
-# ---------------------------
-button_plus = Button(20, 20, 120, 40, "+2 Size", increase_size)
-button_minus = Button(160, 20, 120, 40, "-2 Size", decrease_size)
-button_solve = Button(300, 20, 120, 40, "Solve", lambda: solve_maze())
-dropdown_items = [
-    ("Global", None, True),
-    ("BFS", 0, False),
-    ("DFS", 1, False),
-    ("Bi-BFS", 2, False),
-    ("Dijkstra", 3, False),
-    ("A*", 4, False),
-    ("Greedy", 5, False),
-    ("Dead-End Fill", 6, False),
-    ("Agent", None, True),
-    ("Wall Follower", 7, False),
-    ("Pledge", 8, False),
-    ("Trémaux", 9, False),
-]
-def on_select_algo(idx):
-    global selected_algo, anim_step, playing, robot_pos
-    if idx is None or not solutions or idx >= len(solutions):
-        return
-    selected_algo = idx
-    anim_step = 0
-    playing = True
-    try:
-        _, start, _ = extract_start_goal(maze_map)
-        robot_pos = start
-    except MazeFormatError:
-        robot_pos = None
-
-dropdown = Dropdown(WINDOW_WIDTH - 180, 20, 160, 32, dropdown_items, on_select_algo)
-
-
-# ---------------------------
-# LOAD SPRITES
-# ---------------------------
+# --- ASSET LOADING & SCALING ---
 try:
     sprite_sheet = pygame.image.load('assets/tiles.png').convert_alpha()
     robot_raw = pygame.image.load('assets/robot.png').convert_alpha()
 except FileNotFoundError:
-    print("Error loading sprites.")
+    print("Error: Ensure 'assets/tiles.png' and 'assets/robot.png' exist.")
     sys.exit()
 
-apply_scale(SCALE)
-recalc_center()
+grass_img = None
+bush_img = None
+water_img = None
+chest_img = None
+robot_img = None
+border_imgs = {}
+
+def load_and_scale_assets(scale):
+    global grass_img, bush_img, water_img, chest_img, robot_img, border_imgs, TILE_SIZE
+    
+    TILE_SIZE = int(SPRITE_SIZE * scale)
+    
+    def get_img(col, row):
+        img = pygame.Surface((SPRITE_SIZE, SPRITE_SIZE)).convert_alpha()
+        img.blit(sprite_sheet, (0, 0), (col * SPRITE_SIZE, row * SPRITE_SIZE, SPRITE_SIZE, SPRITE_SIZE))
+        img = pygame.transform.scale(img, (TILE_SIZE, TILE_SIZE))
+        img.set_colorkey((0, 0, 0))
+        return img
+
+    grass_img = get_img(1, 1)
+    bush_img = get_img(8, 26)
+    water_img = get_img(12, 13)
+    chest_img = get_img(8, 49)
+    
+    # Borders
+    border_imgs['tl'] = get_img(0, 12)
+    border_imgs['tm'] = get_img(1, 12)
+    border_imgs['tr'] = get_img(2, 12)
+    border_imgs['l']  = get_img(0, 13)
+    border_imgs['r']  = get_img(2, 13)
+    border_imgs['bl'] = get_img(0, 14)
+    border_imgs['bm'] = get_img(1, 14)
+    border_imgs['br'] = get_img(2, 14)
+
+    robot_img = pygame.transform.scale(robot_raw, (TILE_SIZE, TILE_SIZE))
+
+# Maze Positioning
+start_x = 0
+start_y = 0
+map_rows = 0
+map_cols = 0
+
+def recalc_layout():
+    global start_x, start_y, SCALE, map_rows, map_cols
+    map_rows = len(maze_map)
+    map_cols = len(maze_map[0])
+
+    # Calculate scale to fit within MAZE_AREA (leaving padding)
+    max_w = MAZE_AREA_WIDTH - 40
+    max_h = WINDOW_HEIGHT - 40
+    
+    scale_w = max_w / ((map_cols + 2) * SPRITE_SIZE)
+    scale_h = max_h / ((map_rows + 2) * SPRITE_SIZE)
+    SCALE = min(BASE_SCALE, scale_w, scale_h)
+    
+    load_and_scale_assets(SCALE)
+    
+    structure_width = (map_cols + 2) * TILE_SIZE
+    structure_height = (map_rows + 2) * TILE_SIZE
+    
+    # Center in the Left Area
+    start_x = (MAZE_AREA_WIDTH - structure_width) // 2
+    start_y = (WINDOW_HEIGHT - structure_height) // 2
+
+# Initial Load
+recalc_layout()
 
 
-# ---------------------------
-#   MAIN LOOP
-# ---------------------------
+# --- UI CLASSES ---
+
+class Button:
+    def __init__(self, x, y, w, h, text, action, style="normal"):
+        self.rect = pygame.Rect(x, y, w, h)
+        self.text = text
+        self.action = action
+        self.style = style # normal, primary, danger
+
+    def draw(self, surface):
+        mouse_pos = pygame.mouse.get_pos()
+        hovered = self.rect.collidepoint(mouse_pos)
+        
+        # Color Logic
+        if self.style == "primary":
+            base_col = (59, 130, 246)
+            hover_col = (37, 99, 235)
+        else:
+            base_col = COLOR_BUTTON
+            hover_col = COLOR_BUTTON_HOVER
+            
+        color = hover_col if hovered else base_col
+        
+        # Shadow/Depth
+        pygame.draw.rect(surface, (30, 41, 59), (self.rect.x, self.rect.y+4, self.rect.width, self.rect.height), border_radius=6)
+        # Main Body
+        draw_rect = self.rect.copy()
+        if hovered: draw_rect.y += 1
+        pygame.draw.rect(surface, color, draw_rect, border_radius=6)
+        
+        # Text
+        txt = font_bold.render(self.text, True, COLOR_TEXT_MAIN)
+        txt_rect = txt.get_rect(center=draw_rect.center)
+        surface.blit(txt, txt_rect)
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.rect.collidepoint(event.pos):
+                self.action()
+
+class AlgoSelector:
+    def __init__(self, x, y, w, algos):
+        self.rect = pygame.Rect(x, y, w, 40)
+        self.algos = algos
+        self.current_idx = 0
+        self.open = False
+    
+    def get_selected(self):
+        return self.algos[self.current_idx]
+
+    def draw(self, surface):
+        # Draw Main Box
+        pygame.draw.rect(surface, (15, 23, 42), self.rect, border_radius=6)
+        pygame.draw.rect(surface, COLOR_ACCENT, self.rect, 2, border_radius=6)
+        
+        text = font_main.render(self.algos[self.current_idx][0], True, COLOR_TEXT_MAIN)
+        surface.blit(text, (self.rect.x + 10, self.rect.centery - text.get_height()//2))
+        
+        # Draw Arrow
+        arrow = font_small.render("▼", True, COLOR_TEXT_DIM)
+        surface.blit(arrow, (self.rect.right - 25, self.rect.centery - arrow.get_height()//2))
+
+        if self.open:
+            # Draw Dropdown list
+            drop_h = len(self.algos) * 35
+            drop_rect = pygame.Rect(self.rect.x, self.rect.bottom + 5, self.rect.width, drop_h)
+            pygame.draw.rect(surface, (30, 41, 59), drop_rect, border_radius=6)
+            pygame.draw.rect(surface, (71, 85, 105), drop_rect, 1, border_radius=6)
+            
+            mouse_pos = pygame.mouse.get_pos()
+            
+            for i, (name, _) in enumerate(self.algos):
+                item_rect = pygame.Rect(drop_rect.x, drop_rect.y + i*35, drop_rect.width, 35)
+                if item_rect.collidepoint(mouse_pos):
+                    pygame.draw.rect(surface, (51, 65, 85), item_rect)
+                
+                txt = font_main.render(name, True, COLOR_TEXT_DIM)
+                surface.blit(txt, (item_rect.x + 10, item_rect.centery - txt.get_height()//2))
+
+    def handle_event(self, event):
+        if event.type == pygame.MOUSEBUTTONDOWN and event.button == 1:
+            if self.open:
+                # Check click inside dropdown
+                drop_h = len(self.algos) * 35
+                drop_rect = pygame.Rect(self.rect.x, self.rect.bottom + 5, self.rect.width, drop_h)
+                if drop_rect.collidepoint(event.pos):
+                    relative_y = event.pos[1] - drop_rect.y
+                    idx = relative_y // 35
+                    if 0 <= idx < len(self.algos):
+                        self.current_idx = idx
+                        trigger_solve() # Auto solve on switch for better UX
+                    self.open = False
+                    return True
+                else:
+                    self.open = False # Clicked outside
+            
+            if self.rect.collidepoint(event.pos):
+                self.open = not self.open
+                return True
+        return False
+
+# --- LOGIC FUNCTIONS ---
+
+def reset_state():
+    global solutions, anim_step, playing, robot_pos, solve_error
+    solutions = []
+    anim_step = 0
+    playing = False
+    solve_error = ""
+    try:
+        _, start, _ = extract_start_goal(maze_map)
+        robot_pos = start
+    except:
+        robot_pos = None
+
+def change_size(delta):
+    global ROWS, COLS, maze_map, best_path_len, best_algo_name
+    new_r = ROWS + delta
+    new_c = COLS + delta
+    if new_r > 4 and new_c > 4:
+        ROWS = new_r
+        COLS = new_c
+        maze_map = generate_maze(ROWS, COLS)
+        recalc_layout()
+        reset_state()
+        best_path_len = float('inf')
+        best_algo_name = "-"
+
+def trigger_solve():
+    global solutions, playing, anim_step, robot_pos, solve_error, best_path_len, best_algo_name, current_algo_name
+    
+    reset_state()
+    
+    # Get selected algo
+    name, func = algo_selector.get_selected()
+    current_algo_name = name
+    
+    try:
+        norm_map, start, goal = extract_start_goal(maze_map)
+        result = func(norm_map, start, goal)
+        solutions.append(result)
+        
+        # Update best stats
+        if result.path and result.metrics.path_length < best_path_len:
+            best_path_len = result.metrics.path_length
+            best_algo_name = name
+            
+        playing = True
+        robot_pos = start
+        
+    except Exception as e:
+        solve_error = str(e)
+        print(e)
+
+def toggle_speed():
+    global animation_speed
+    # Cycle: Normal (1.0) -> Fast (5.0) -> Slow (0.5) -> Normal (1.0)
+    if animation_speed == 1.0: 
+        animation_speed = 5.0
+    elif animation_speed == 5.0: 
+        animation_speed = 0.5
+    else: 
+        animation_speed = 1.0
+
+# --- GUI ELEMENTS SETUP ---
+
+# Algorithm List
+algo_list = [
+    ("BFS", lambda m,s,g: bfs(m,s,g)),
+    ("DFS", lambda m,s,g: dfs_iterative(m,s,g)),
+    ("Bi-Directional BFS", lambda m,s,g: bidirectional_bfs(m,s,g)),
+    ("Dijkstra", lambda m,s,g: dijkstra(m,s,g)),
+    ("A* Search", lambda m,s,g: a_star(m,s,g)),
+    ("Greedy Best First", lambda m,s,g: greedy_best_first(m,s,g)),
+    ("Wall Follower", lambda m,s,g: wall_follower(m,s,g)),
+    ("Pledge Algorithm", lambda m,s,g: pledge(m,s,g)),
+    ("Trémaux", lambda m,s,g: tremaux(m,s,g)),
+]
+
+# Sidebar X position
+ui_x = MAZE_AREA_WIDTH + 20
+ui_w = SIDEBAR_WIDTH - 40
+
+algo_selector = AlgoSelector(ui_x, 150, ui_w, algo_list)
+
+btn_solve = Button(ui_x, 210, ui_w, 45, "SOLVE / REPLAY", trigger_solve, "primary")
+btn_size_up = Button(ui_x + ui_w//2 + 5, 270, ui_w//2 - 5, 35, "Size +", lambda: change_size(2))
+btn_size_down = Button(ui_x, 270, ui_w//2 - 5, 35, "Size -", lambda: change_size(-2))
+btn_speed = Button(ui_x, 320, ui_w, 35, "Speed: Normal", toggle_speed)
+
+
+# --- DRAWING FUNCTIONS ---
+
+def draw_sidebar():
+    # Background Panel
+    pygame.draw.rect(screen, COLOR_PANEL, (MAZE_AREA_WIDTH, 0, SIDEBAR_WIDTH, WINDOW_HEIGHT))
+    pygame.draw.line(screen, (71, 85, 105), (MAZE_AREA_WIDTH, 0), (MAZE_AREA_WIDTH, WINDOW_HEIGHT), 2)
+    
+    # Title
+    title = font_title.render("MAZE SOLVER", True, COLOR_TEXT_MAIN)
+    screen.blit(title, (ui_x, 30))
+    sub = font_small.render("Algorithm Visualizer", True, COLOR_ACCENT)
+    screen.blit(sub, (ui_x, 65))
+    
+    # Separator
+    pygame.draw.line(screen, (71, 85, 105), (ui_x, 100), (ui_x+ui_w, 100), 1)
+
+    # Inputs Labels
+    lbl_algo = font_bold.render("Select Algorithm:", True, COLOR_TEXT_DIM)
+    screen.blit(lbl_algo, (ui_x, 120))
+    
+    # Draw Controls
+    # Buttons first so Selector dropdown draws OVER them
+    btn_solve.draw(screen)
+    btn_size_up.draw(screen)
+    btn_size_down.draw(screen)
+    
+    # Update Speed Text
+    spd_txt = "Speed: Normal"
+    if animation_speed == 5.0: spd_txt = "Speed: Fast"
+    if animation_speed == 0.5: spd_txt = "Speed: Slow"
+    btn_speed.text = spd_txt
+    btn_speed.draw(screen)
+    
+    # --- STATISTICS PANEL ---
+    stats_y = 400
+    pygame.draw.rect(screen, (30, 41, 59), (ui_x, stats_y, ui_w, 250), border_radius=8)
+    pygame.draw.rect(screen, (71, 85, 105), (ui_x, stats_y, ui_w, 250), 1, border_radius=8)
+    
+    head_txt = font_bold.render("STATISTICS", True, COLOR_TEXT_MAIN)
+    screen.blit(head_txt, (ui_x + 15, stats_y + 15))
+    
+    if solutions:
+        res = solutions[0]
+        
+        def draw_row(label, value, y_off, color=COLOR_TEXT_DIM):
+            lbl = font_small.render(label, True, (148, 163, 184))
+            val = font_bold.render(str(value), True, color)
+            screen.blit(lbl, (ui_x + 15, stats_y + y_off))
+            screen.blit(val, (ui_x + ui_w - val.get_width() - 15, stats_y + y_off))
+
+        visited_txt = f"{len(res.visited_order)}"
+        if playing:
+            visited_txt = f"{int(anim_step)} / {len(res.visited_order)}"
+
+        draw_row("Current Algo:", current_algo_name, 50, COLOR_ACCENT)
+        draw_row("Visited Nodes:", visited_txt, 80)
+        draw_row("Path Length:", str(res.metrics.path_length or "N/A"), 110)
+        
+        # Divider
+        pygame.draw.line(screen, (71, 85, 105), (ui_x+10, stats_y+140), (ui_x+ui_w-10, stats_y+140), 1)
+        
+        draw_row("Best Found:", best_algo_name, 160, COLOR_SUCCESS)
+        draw_row("Shortest Path:", str(best_path_len if best_path_len != float('inf') else "-"), 190, COLOR_SUCCESS)
+        
+    else:
+        info = font_small.render("Press Solve to start...", True, (100, 116, 139))
+        screen.blit(info, (ui_x + 15, stats_y + 50))
+    
+    # Draw Dropdown LAST so it appears on top of other buttons/panels
+    algo_selector.draw(screen) 
+
+    if solve_error:
+        err = font_small.render("Error: Invalid Maze", True, (239, 68, 68))
+        screen.blit(err, (ui_x, WINDOW_HEIGHT - 30))
+
+def draw_maze_area():
+    # Background for maze area
+    for y in range(0, WINDOW_HEIGHT, TILE_SIZE):
+        for x in range(0, MAZE_AREA_WIDTH, TILE_SIZE):
+            screen.blit(water_img, (x, y)) # Tiling water background
+            
+    # Draw Border
+    for col in range(map_cols):
+        screen.blit(border_imgs['tm'], (start_x + TILE_SIZE + col * TILE_SIZE, start_y))
+        screen.blit(border_imgs['bm'], (start_x + TILE_SIZE + col * TILE_SIZE, start_y + TILE_SIZE + map_rows * TILE_SIZE))
+    for row in range(map_rows):
+        screen.blit(border_imgs['l'], (start_x, start_y + TILE_SIZE + row * TILE_SIZE))
+        screen.blit(border_imgs['r'], (start_x + TILE_SIZE + map_cols * TILE_SIZE, start_y + TILE_SIZE + row * TILE_SIZE))
+        
+    screen.blit(border_imgs['tl'], (start_x, start_y))
+    screen.blit(border_imgs['tr'], (start_x + TILE_SIZE + map_cols * TILE_SIZE, start_y))
+    screen.blit(border_imgs['bl'], (start_x, start_y + TILE_SIZE + map_rows * TILE_SIZE))
+    screen.blit(border_imgs['br'], (start_x + TILE_SIZE + map_cols * TILE_SIZE, start_y + TILE_SIZE + map_rows * TILE_SIZE))
+
+    # Draw Map
+    for r, row in enumerate(maze_map):
+        for c, tile_id in enumerate(row):
+            x = start_x + TILE_SIZE + c * TILE_SIZE
+            y = start_y + TILE_SIZE + r * TILE_SIZE
+            
+            screen.blit(grass_img, (x, y))
+            if tile_id == 1: screen.blit(bush_img, (x, y))
+            elif tile_id == 2: screen.blit(chest_img, (x, y))
+            elif tile_id == 3: screen.blit(robot_img, (x, y)) # Still draws the robot start tile!
+
+    # Draw Visualization
+    if solutions:
+        res = solutions[0]
+        
+        # 1. Visited Nodes (Blue tint)
+        limit = anim_step if playing else len(res.visited_order)
+        # Use int(limit) because anim_step can be float now
+        limit = int(limit)
+        
+        for i in range(limit):
+            pos = res.visited_order[i]
+            x = start_x + TILE_SIZE + pos[1] * TILE_SIZE
+            y = start_y + TILE_SIZE + pos[0] * TILE_SIZE
+            
+            s = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+            s.fill(COLOR_VISITED)
+            screen.blit(s, (x, y))
+
+        # 2. Path (Yellow Path) - Only show if current step reached goal or finished
+        if not playing or (playing and limit >= len(res.visited_order)):
+             for pos in res.path:
+                x = start_x + TILE_SIZE + pos[1] * TILE_SIZE
+                y = start_y + TILE_SIZE + pos[0] * TILE_SIZE
+                s = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
+                s.fill(COLOR_PATH)
+                screen.blit(s, (x, y))
+                # Add a small dot in center for path flow
+                pygame.draw.circle(screen, (255, 255, 255), (x + TILE_SIZE//2, y + TILE_SIZE//2), TILE_SIZE//6)
+
+    # Draw Robot on top of everything
+    if robot_pos:
+        x = start_x + TILE_SIZE + robot_pos[1] * TILE_SIZE
+        y = start_y + TILE_SIZE + robot_pos[0] * TILE_SIZE
+        
+        # Highlight ring around robot
+        cx, cy = x + TILE_SIZE//2, y + TILE_SIZE//2
+        pygame.draw.circle(screen, (255, 255, 255), (cx, cy), TILE_SIZE//2 + 2, 2)
+        screen.blit(robot_img, (x, y))
+
+
+# --- MAIN LOOP ---
+
 running = True
+clock = pygame.time.Clock()
+
 while running:
+    # Event Handling
     for event in pygame.event.get():
         if event.type == pygame.QUIT:
             running = False
+        
+        # Handle UI events
+        if not algo_selector.handle_event(event):
+            btn_solve.handle_event(event)
+            btn_size_up.handle_event(event)
+            btn_size_down.handle_event(event)
+            btn_speed.handle_event(event)
 
-        button_plus.check_click(event)
-        button_minus.check_click(event)
-        button_solve.check_click(event)
-        dropdown.handle_event(event)
-
-    if playing and solutions and selected_algo is not None:
-        current = solutions[selected_algo]["result"]
-        anim_step = min(anim_step + 1, len(current.visited_order))
-        if anim_step >= 1:
-            robot_pos = current.visited_order[anim_step - 1]
-        if anim_step >= len(current.visited_order):
+    # Animation Logic
+    if playing and solutions:
+        res = solutions[0]
+        total_steps = len(res.visited_order)
+        
+        if anim_step < total_steps:
+            anim_step += animation_speed
+            if anim_step >= total_steps:
+                anim_step = total_steps
+                robot_pos = res.visited_order[-1]
+            else:
+                robot_pos = res.visited_order[int(anim_step)]
+        else:
+            # Animation finished
             playing = False
 
-    # Draw water background
-    for y in range(0, WINDOW_HEIGHT, TILE_SIZE):
-        for x in range(0, WINDOW_WIDTH, TILE_SIZE):
-            screen.blit(water_img, (x, y))
-
-    # Draw controls first (above maze)
-    button_plus.draw(screen)
-    button_minus.draw(screen)
-    button_solve.draw(screen)
-    current_label = "Algo" if selected_algo is None or not solutions else solutions[selected_algo]["name"]
-    dropdown.draw(screen, current_label)
-
-    # Draw borders
-    for col in range(map_cols):
-        screen.blit(border_top_m, (start_x + TILE_SIZE + col * TILE_SIZE, start_y))
-        screen.blit(border_bot_m, (start_x + TILE_SIZE + col * TILE_SIZE, start_y + TILE_SIZE + map_rows * TILE_SIZE))
-
-    for row in range(map_rows):
-        screen.blit(border_side_l, (start_x, start_y + TILE_SIZE + row * TILE_SIZE))
-        screen.blit(border_side_r, (start_x + TILE_SIZE + map_cols * TILE_SIZE, start_y + TILE_SIZE + row * TILE_SIZE))
-
-    screen.blit(border_top_l, (start_x, start_y))
-    screen.blit(border_top_r, (start_x + TILE_SIZE + map_cols * TILE_SIZE, start_y))
-    screen.blit(border_bot_l, (start_x, start_y + TILE_SIZE + map_rows * TILE_SIZE))
-    screen.blit(border_bot_r, (start_x + TILE_SIZE + map_cols * TILE_SIZE, start_y + TILE_SIZE + map_rows * TILE_SIZE))
-
-    # Draw maze tiles
-    for r, row in enumerate(maze_map):
-        for c, tile_id in enumerate(row):
-            x_pos = start_x + TILE_SIZE + c * TILE_SIZE
-            y_pos = start_y + TILE_SIZE + r * TILE_SIZE
-
-            screen.blit(grass_img, (x_pos, y_pos))
-
-            if tile_id == 1:
-                screen.blit(bush_img, (x_pos, y_pos))
-            elif tile_id == 2:
-                screen.blit(chest_img, (x_pos, y_pos))  # goal
-            elif tile_id == 3:
-                screen.blit(robot_img, (x_pos, y_pos))  # start marker
-
-    # Overlay visited/path for selected solver
-    if solutions and selected_algo is not None:
-        current = solutions[selected_algo]
-        visited_order = current["result"].visited_order
-        path = set(current["result"].path)
-        steps_to_draw = visited_order if not playing else visited_order[:anim_step]
-        for pos in steps_to_draw:
-            r, c = pos
-            x_pos = start_x + TILE_SIZE + c * TILE_SIZE
-            y_pos = start_y + TILE_SIZE + r * TILE_SIZE
-            overlay = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-            overlay.fill((0, 0, 255, 80))  # visited tint
-            screen.blit(overlay, (x_pos, y_pos))
-        for r, c in path:
-            x_pos = start_x + TILE_SIZE + c * TILE_SIZE
-            y_pos = start_y + TILE_SIZE + r * TILE_SIZE
-            overlay = pygame.Surface((TILE_SIZE, TILE_SIZE), pygame.SRCALPHA)
-            overlay.fill((255, 215, 0, 120))  # path tint
-            screen.blit(overlay, (x_pos, y_pos))
-
-    # Draw moving robot along visited order
-    if robot_pos:
-        r, c = robot_pos
-        x_pos = start_x + TILE_SIZE + c * TILE_SIZE
-        y_pos = start_y + TILE_SIZE + r * TILE_SIZE
-        screen.blit(robot_img, (x_pos, y_pos))
-
-    # Draw sidebar stats
-    stats_x = WINDOW_WIDTH - 220
-    stats_y = 70
-    status_lines = []
-    if solve_error:
-        status_lines.append(f"Error: {solve_error}")
-    elif solutions and selected_algo is not None:
-        cur = solutions[selected_algo]
-        res = cur["result"]
-        status_lines.append(f"Algo: {cur['name']}")
-        status_lines.append(f"Path length: {res.metrics.path_length}")
-        status_lines.append(f"Visited: {res.metrics.visited_count}")
-        if res.metrics.path_cost is not None:
-            status_lines.append(f"Cost: {res.metrics.path_cost}")
-        if res.metrics.max_frontier_size is not None:
-            status_lines.append(f"Max frontier: {res.metrics.max_frontier_size}")
-        if best_algo:
-            status_lines.append(f"Best: {best_algo}")
-    for idx, text in enumerate(status_lines):
-        txt_surf = font.render(text, True, (255, 255, 255))
-        screen.blit(txt_surf, (stats_x, stats_y + idx * 22))
-
+    # Drawing
+    screen.fill(COLOR_BG)
+    draw_maze_area()
+    draw_sidebar()
+    
     pygame.display.flip()
+    clock.tick(60)
 
 pygame.quit()
 sys.exit()
