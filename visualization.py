@@ -68,6 +68,7 @@ animation_speed = 1.0  # Steps per frame (float)
 
 # Stats History
 best_path_len = float('inf')
+best_visited_count = float('inf')
 best_algo_name = "-"
 
 # --- ASSET LOADING & SCALING ---
@@ -262,7 +263,7 @@ def reset_state():
         robot_pos = None
 
 def change_size(delta):
-    global ROWS, COLS, maze_map, best_path_len, best_algo_name
+    global ROWS, COLS, maze_map, best_path_len, best_algo_name, best_visited_count
     new_r = ROWS + delta
     new_c = COLS + delta
     if new_r > 4 and new_c > 4:
@@ -272,10 +273,11 @@ def change_size(delta):
         recalc_layout()
         reset_state()
         best_path_len = float('inf')
+        best_visited_count = float('inf')
         best_algo_name = "-"
 
 def trigger_solve():
-    global solutions, playing, anim_step, robot_pos, solve_error, best_path_len, best_algo_name, current_algo_name
+    global solutions, playing, anim_step, robot_pos, solve_error, best_path_len, best_algo_name, current_algo_name, best_visited_count
     
     reset_state()
     
@@ -289,9 +291,22 @@ def trigger_solve():
         solutions.append(result)
         
         # Update best stats
-        if result.path and result.metrics.path_length < best_path_len:
-            best_path_len = result.metrics.path_length
-            best_algo_name = name
+        if result.path:
+            # FIX: Use len(visited_order) (Expanded Nodes) instead of result.metrics.visited_count (Discovered Nodes)
+            # This ensures the visual 'Visited Nodes' count matches the 'Least Visited' comparison logic.
+            current_visited_count = len(result.visited_order)
+            
+            # Case 1: Strictly shorter path found
+            if result.metrics.path_length < best_path_len:
+                best_path_len = result.metrics.path_length
+                best_visited_count = current_visited_count
+                best_algo_name = name
+            
+            # Case 2: Tie for path length, but this one visited fewer nodes (more efficient)
+            elif result.metrics.path_length == best_path_len:
+                if current_visited_count < best_visited_count:
+                    best_visited_count = current_visited_count
+                    best_algo_name = name
             
         playing = True
         robot_pos = start
@@ -299,6 +314,51 @@ def trigger_solve():
     except Exception as e:
         solve_error = str(e)
         print(e)
+
+def find_optimal_algo():
+    global solve_error
+    try:
+        norm_map, start, goal = extract_start_goal(maze_map)
+    except Exception as e:
+        solve_error = str(e)
+        return
+
+    best_idx = -1
+    local_best_len = float('inf')
+    local_best_vis = float('inf')
+
+    # Iterate through all available algorithms
+    for i, (name, func) in enumerate(algo_list):
+        try:
+            # Run algorithm silently
+            res = func(norm_map, start, goal)
+            if not res.path:
+                continue
+            
+            p_len = res.metrics.path_length
+            # Use same metric as trigger_solve: len(visited_order) (Expanded Nodes)
+            v_count = len(res.visited_order)
+
+            # Compare to find the best
+            # Priority 1: Shortest Path Length
+            if p_len < local_best_len:
+                local_best_len = p_len
+                local_best_vis = v_count
+                best_idx = i
+            # Priority 2: Least Visited Nodes (Efficiency)
+            elif p_len == local_best_len:
+                if v_count < local_best_vis:
+                    local_best_vis = v_count
+                    best_idx = i
+        except:
+            continue
+            
+    if best_idx != -1:
+        # Select the best one and run it visually
+        algo_selector.current_idx = best_idx
+        trigger_solve()
+    else:
+        solve_error = "No optimal solution found."
 
 def toggle_speed():
     global animation_speed
@@ -335,6 +395,8 @@ btn_solve = Button(ui_x, 210, ui_w, 45, "SOLVE / REPLAY", trigger_solve, "primar
 btn_size_up = Button(ui_x + ui_w//2 + 5, 270, ui_w//2 - 5, 35, "Size +", lambda: change_size(2))
 btn_size_down = Button(ui_x, 270, ui_w//2 - 5, 35, "Size -", lambda: change_size(-2))
 btn_speed = Button(ui_x, 320, ui_w, 35, "Speed: Normal", toggle_speed)
+# New Optimal Button
+btn_optimal = Button(ui_x, 370, ui_w, 45, "Find Optimal Algorithm", find_optimal_algo, "primary")
 
 
 # --- DRAWING FUNCTIONS ---
@@ -369,11 +431,15 @@ def draw_sidebar():
     if animation_speed == 0.5: spd_txt = "Speed: Slow"
     btn_speed.text = spd_txt
     btn_speed.draw(screen)
+
+    # Draw New Optimal Button
+    btn_optimal.draw(screen)
     
     # --- STATISTICS PANEL ---
-    stats_y = 400
-    pygame.draw.rect(screen, (30, 41, 59), (ui_x, stats_y, ui_w, 250), border_radius=8)
-    pygame.draw.rect(screen, (71, 85, 105), (ui_x, stats_y, ui_w, 250), 1, border_radius=8)
+    # Moved down to accommodate new button (y=400 -> y=430)
+    stats_y = 430
+    pygame.draw.rect(screen, (30, 41, 59), (ui_x, stats_y, ui_w, 260), border_radius=8)
+    pygame.draw.rect(screen, (71, 85, 105), (ui_x, stats_y, ui_w, 260), 1, border_radius=8)
     
     head_txt = font_bold.render("STATISTICS", True, COLOR_TEXT_MAIN)
     screen.blit(head_txt, (ui_x + 15, stats_y + 15))
@@ -398,14 +464,21 @@ def draw_sidebar():
         # Divider
         pygame.draw.line(screen, (71, 85, 105), (ui_x+10, stats_y+140), (ui_x+ui_w-10, stats_y+140), 1)
         
+        # Best Stats Section
         draw_row("Best Found:", best_algo_name, 160, COLOR_SUCCESS)
-        draw_row("Shortest Path:", str(best_path_len if best_path_len != float('inf') else "-"), 190, COLOR_SUCCESS)
+        
+        # Format the best path length
+        val_path = str(best_path_len) if best_path_len != float('inf') else "-"
+        draw_row("Shortest Path:", val_path, 190, COLOR_SUCCESS)
+
+        # Format and Draw Best Visited Count
+        val_vis = str(best_visited_count) if best_visited_count != float('inf') else "-"
+        draw_row("Least Visited:", val_vis, 220, COLOR_SUCCESS)
         
     else:
         info = font_small.render("Press Solve to start...", True, (100, 116, 139))
         screen.blit(info, (ui_x + 15, stats_y + 50))
     
-    # Draw Dropdown LAST so it appears on top of other buttons/panels
     algo_selector.draw(screen) 
 
     if solve_error:
@@ -499,6 +572,7 @@ while running:
             btn_size_up.handle_event(event)
             btn_size_down.handle_event(event)
             btn_speed.handle_event(event)
+            btn_optimal.handle_event(event)
 
     # Animation Logic
     if playing and solutions:
