@@ -2,63 +2,27 @@
 
 Command-line interface and library for experimenting with grid-based maze solvers (BFS, DFS, bi-BFS, Dijkstra, A*, Greedy, dead-end filling, and agent algorithms).
 
-## A note for Windows users
-venv paths vary between Windows and Mac systems, if you're on Windows the ```bin``` folder in the paths mentioned below should be replaced with the ```Scripts``` folder. For example, instead of running ```venv/bin/pip install -r requirements-dev.txt``` Windows users should run ```venv/bin/pip install -r requirements-dev.txt```.
-
 ## Quick Start
+To begin, install requirements, then run the app.py file.
+
+### Windows
 ```bash
 python3 -m venv venv
-venv/bin/pip install -r requirements-dev.txt
+venv/Scripts/pip install -r requirements.txt
 ```
-
-## CLI Usage
-Mazes are text files with `0` for open and `1` for wall. Examples live in `examples/`.
-
-- Basic BFS:
+### Mac
 ```bash
-venv/bin/python -m maze_solver.cli \
-  --maze examples/maze_small.txt \
-  --algo bfs \
-  --start 0,0 \
-  --goal 2,4
+python3 -m venv venv
+venv/bin/pip install -r requirements.txt
 ```
 
-- A* with diagonals + octile heuristic:
-```bash
-venv/bin/python -m maze_solver.cli \
-  --maze examples/maze_small.txt \
-  --algo a_star \
-  --start 0,0 \
-  --goal 2,4 \
-  --diagonals \
-  --heuristic octile
-```
-
-- Weighted A*:
-```bash
-venv/bin/python -m maze_solver.cli \
-  --maze examples/maze_small.txt \
-  --weights examples/weights_small.txt \
-  --algo a_star \
-  --start 0,0 \
-  --goal 2,4
-```
-
-- Trace visited order:
-```bash
-venv/bin/python -m maze_solver.cli \
-  --maze examples/maze_small.txt \
-  --algo bfs \
-  --start 0,0 \
-  --goal 2,4 \
-  --trace
-```
-
-Additional sample mazes:
-- `examples/maze_perfect.txt`: perfect maze (tree) to compare optimal solvers vs wall follower success.
-- `examples/maze_loopy.txt`: loopy maze with optional weights (`examples/weights_loopy.txt`) to stress agent failures and weighted routing.
-
-## Notes
-- `--diagonals` controls 8-way movement; use `--heuristic octile` for A*/greedy in that mode.
-- `--weights` expects a grid of numeric costs matching maze dimensions (see `examples/weights_small.txt`).
-- Agent algorithms (wall follower, Pledge, Trémaux) are available via `--algo wall|pledge|tremaux`.
+### Start
+To start, run app.py. Refer to the image below for further instructions.
+![Instructions Image](assets/README_picture.jpg)
+1. Select algorithm from dropdown
+1. Click to replay solving
+1. Increase or decrease maze size (all stats will be wiped)
+1. Change solving animatioon speed
+1. Find the best solving algorithm for the current maze
+1. Current and current best statistics
+1. Window for viewing solving animation
