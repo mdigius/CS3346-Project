@@ -513,7 +513,7 @@ def draw_maze_area():
             screen.blit(grass_img, (x, y))
             if tile_id == 1: screen.blit(bush_img, (x, y))
             elif tile_id == 2: screen.blit(chest_img, (x, y))
-            elif tile_id == 3: screen.blit(robot_img, (x, y)) # Still draws the robot start tile!
+            elif tile_id == 3: screen.blit(robot_img, (x, y)) 
 
     # Draw Visualization
     if solutions:
