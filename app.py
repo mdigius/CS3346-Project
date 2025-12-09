@@ -1,5 +1,6 @@
 import pygame
 import sys
+import time
 from maze_generator.maze_generator import generate_maze
 from maze_solver import (
     bfs,
@@ -289,7 +290,10 @@ def trigger_solve():
     
     try:
         norm_map, start, goal = extract_start_goal(maze_map)
+        start_ns = time.perf_counter_ns()
         result = func(norm_map, start, goal)
+        end_ns = time.perf_counter_ns()
+        result.metrics.runtime_ns = end_ns - start_ns
         solutions.append(result)
         
         # Update best stats
@@ -335,7 +339,10 @@ def find_optimal_algo():
     for i, (name, func) in enumerate(algo_list):
         try:
             # Run algorithm silently
+            start_ns = time.perf_counter_ns()
             res = func(norm_map, start, goal)
+            end_ns = time.perf_counter_ns()
+            res.metrics.runtime_ns = end_ns - start_ns
             if not res.path:
                 continue
             
@@ -464,7 +471,7 @@ def draw_sidebar():
         draw_row("Current Algo:", current_algo_name, 50, COLOR_ACCENT)
         draw_row("Visited Nodes:", visited_txt, 80)
         draw_row("Path Length:", str(res.metrics.path_length or "N/A"), 110)
-        draw_row("Runtime:", ((f"{res.metrics.runtime_ns:,} ns") or "N/A"), 140)
+        draw_row("Runtime:", (f"{res.metrics.runtime_ns:,} ns" if res.metrics.runtime_ns is not None else "N/A"), 140)
         
         # Divider
         pygame.draw.line(screen, (71, 85, 105), (ui_x+10, stats_y+170), (ui_x+ui_w-10, stats_y+170), 1)
@@ -480,7 +487,7 @@ def draw_sidebar():
         val_vis = str(best_visited_count) if best_visited_count != float('inf') else "-"
         draw_row("Least Visited:", val_vis, 240, COLOR_SUCCESS)
 
-        val_time = f"{best_algo_time:,} ns" if best_algo_time != float('inf') else "-"
+        val_time = "-" if best_algo_time is None or best_algo_time == float('inf') else f"{best_algo_time:,} ns"
         draw_row("Runtime", val_time, 270, COLOR_SUCCESS)
         
     else:

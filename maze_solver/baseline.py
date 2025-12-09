@@ -15,6 +15,7 @@ class SearchMetrics:
     path_length: Optional[int]  # number of steps; None if no path
     path_cost: Optional[float] = None  # total cost; defaults to steps for unweighted grids
     max_frontier_size: Optional[int] = None  # peak frontier/stack/heap size observed
+    runtime_ns: Optional[int] = None  # execution time in nanoseconds (optional)
     runtime_ns: Optional[float] = None # track run time
 
 @dataclass
