@@ -3,7 +3,7 @@
 from collections import deque
 from dataclasses import dataclass
 from heapq import heappop, heappush
-import time
+from time import perf_counter_ns
 from typing import Callable, Dict, Iterable, List, Optional, Set, Tuple
 
 Position = Tuple[int, int]  # (row, col)
@@ -132,7 +132,7 @@ def bfs(
 ) -> SearchResult:
     """Breadth-first search for shortest path on an unweighted grid."""
 
-    t0 = time.perf_counter()
+    t0 = time.perf_counter_ns()
 
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
@@ -164,7 +164,7 @@ def bfs(
             path_length=None,
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = time.perf_counter() - t0
+        metrics.runtime_seconds = time.perf_counter_ns() - t0
         
         return SearchResult([], order, metrics)
 
@@ -177,7 +177,7 @@ def bfs(
         path_cost=steps,
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = time.perf_counter() - t0
+    metrics.runtime_seconds = time.perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -190,7 +190,7 @@ def dfs_iterative(
 ) -> SearchResult:
     """Iterative depth-first search; returns a found path (not guaranteed shortest)."""
 
-    t0 = time.perf_counter()
+    t0 = time.perf_counter_ns()
 
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
@@ -222,7 +222,7 @@ def dfs_iterative(
             path_length=None,
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = time.perf_counter() - t0
+        metrics.runtime_seconds = time.perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path = _reconstruct(parents, start, goal)
@@ -233,7 +233,7 @@ def dfs_iterative(
         path_cost=steps,
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = time.perf_counter() - t0
+    metrics.runtime_seconds = time.perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -245,7 +245,7 @@ def bidirectional_bfs(
     on_expand: Optional[Callable[[Position], None]] = None,
 ) -> SearchResult:
     """Bidirectional BFS: searches from both start and goal simultaneously."""
-    t0 = time.perf_counter()
+    t0 = time.perf_counter_ns()
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
     if start == goal:
@@ -305,7 +305,7 @@ def bidirectional_bfs(
             path_length=None,
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = time.perf_counter() - t0
+        metrics.runtime_seconds = time.perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path_forward = _reconstruct(parents_f, start, meet)
@@ -320,7 +320,7 @@ def bidirectional_bfs(
         path_cost=steps, 
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = time.perf_counter() - t0
+    metrics.runtime_seconds = time.perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -349,7 +349,7 @@ def dijkstra(
     Returns:
         SearchResult with optimal path, visited order, and metrics (includes path_cost)
     """
-    t0 = time.perf_counter()
+    t0 = time.perf_counter_ns()
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -390,7 +390,7 @@ def dijkstra(
             path_cost=None, 
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = time.perf_counter() - t0
+        metrics.runtime_seconds = time.perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path = _reconstruct(parents, start, goal)
@@ -402,7 +402,7 @@ def dijkstra(
         path_cost=cost, 
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = time.perf_counter() - t0
+    metrics.runtime_seconds = time.perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -434,7 +434,7 @@ def a_star(
     Returns:
         SearchResult with optimal path, visited order, and metrics (includes path_cost)
     """
-    t0 = time.perf_counter()
+    t0 = time.perf_counter_ns()
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -483,7 +483,7 @@ def a_star(
             path_cost=None, 
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = time.perf_counter() - t0
+        metrics.runtime_seconds = time.perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path = _reconstruct(parents, start, goal)
@@ -495,7 +495,7 @@ def a_star(
         path_cost=cost, 
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = time.perf_counter() - t0;
+    metrics.runtime_seconds = time.perf_counter_ns() - t0;
     return SearchResult(path, order, metrics)
 
 
@@ -521,7 +521,7 @@ def greedy_best_first(
     Returns:
         SearchResult with found path (possibly non-optimal), visited order, and metrics
     """
-    t0 = time.perf_counter()
+    t0 = time.perf_counter_ns()
     if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
@@ -555,7 +555,7 @@ def greedy_best_first(
             path_cost=None, 
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = time.perf_counter() - t0
+        metrics.runtime_seconds = time.perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path = _reconstruct(parents, start, goal)
@@ -566,7 +566,7 @@ def greedy_best_first(
         path_cost=steps, 
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = time.perf_counter() - t0
+    metrics.runtime_seconds = time.perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -624,8 +624,8 @@ def dead_end_filling(
     if not (_is_walkable(working, start) and _is_walkable(working, goal)):
         return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
 
-    t0 = time.perf_counter()
+    t0 = time.perf_counter_ns()
     # Run BFS on the pruned maze to extract the corridor path.
     result = bfs(working, start, goal, allow_diagonals=allow_diagonals)
-    result.metrics.runtime_seconds = time.perf_counter() - t0
+    result.metrics.runtime_seconds = time.perf_counter_ns() - t0
     return SearchResult(result.path, result.visited_order, result.metrics)
