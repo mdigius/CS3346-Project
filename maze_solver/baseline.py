@@ -15,7 +15,7 @@ class SearchMetrics:
     path_length: Optional[int]  # number of steps; None if no path
     path_cost: Optional[float] = None  # total cost; defaults to steps for unweighted grids
     max_frontier_size: Optional[int] = None  # peak frontier/stack/heap size observed
-    runtime_seconds: Optional[float] = None # track run time
+    runtime_ns: Optional[float] = None # track run time
 
 @dataclass
 class SearchResult:
@@ -164,7 +164,7 @@ def bfs(
             path_length=None,
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = perf_counter_ns() - t0
+        metrics.runtime_ns = perf_counter_ns() - t0
         
         return SearchResult([], order, metrics)
 
@@ -177,7 +177,7 @@ def bfs(
         path_cost=steps,
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = perf_counter_ns() - t0
+    metrics.runtime_ns = perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -222,7 +222,7 @@ def dfs_iterative(
             path_length=None,
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = perf_counter_ns() - t0
+        metrics.runtime_ns = perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path = _reconstruct(parents, start, goal)
@@ -233,7 +233,7 @@ def dfs_iterative(
         path_cost=steps,
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = perf_counter_ns() - t0
+    metrics.runtime_ns = perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -305,7 +305,7 @@ def bidirectional_bfs(
             path_length=None,
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = perf_counter_ns() - t0
+        metrics.runtime_ns = perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path_forward = _reconstruct(parents_f, start, meet)
@@ -320,7 +320,7 @@ def bidirectional_bfs(
         path_cost=steps, 
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = perf_counter_ns() - t0
+    metrics.runtime_ns = perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -390,7 +390,7 @@ def dijkstra(
             path_cost=None, 
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = perf_counter_ns() - t0
+        metrics.runtime_ns = perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path = _reconstruct(parents, start, goal)
@@ -402,7 +402,7 @@ def dijkstra(
         path_cost=cost, 
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = perf_counter_ns() - t0
+    metrics.runtime_ns = perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -483,7 +483,7 @@ def a_star(
             path_cost=None, 
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = perf_counter_ns() - t0
+        metrics.runtime_ns = perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path = _reconstruct(parents, start, goal)
@@ -495,7 +495,7 @@ def a_star(
         path_cost=cost, 
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = perf_counter_ns() - t0;
+    metrics.runtime_ns = perf_counter_ns() - t0;
     return SearchResult(path, order, metrics)
 
 
@@ -555,7 +555,7 @@ def greedy_best_first(
             path_cost=None, 
             max_frontier_size=max_frontier
         )
-        metrics.runtime_seconds = perf_counter_ns() - t0
+        metrics.runtime_ns = perf_counter_ns() - t0
         return SearchResult([], order, metrics)
 
     path = _reconstruct(parents, start, goal)
@@ -566,7 +566,7 @@ def greedy_best_first(
         path_cost=steps, 
         max_frontier_size=max_frontier
     )
-    metrics.runtime_seconds = perf_counter_ns() - t0
+    metrics.runtime_ns = perf_counter_ns() - t0
     return SearchResult(path, order, metrics)
 
 
@@ -627,5 +627,5 @@ def dead_end_filling(
     t0 = perf_counter_ns()
     # Run BFS on the pruned maze to extract the corridor path.
     result = bfs(working, start, goal, allow_diagonals=allow_diagonals)
-    result.metrics.runtime_seconds = perf_counter_ns() - t0
+    result.metrics.runtime_ns = perf_counter_ns() - t0
     return SearchResult(result.path, result.visited_order, result.metrics)
