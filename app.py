@@ -464,7 +464,7 @@ def draw_sidebar():
         draw_row("Current Algo:", current_algo_name, 50, COLOR_ACCENT)
         draw_row("Visited Nodes:", visited_txt, 80)
         draw_row("Path Length:", str(res.metrics.path_length or "N/A"), 110)
-        draw_row("Time Taken:", ((f"{res.metrics.runtime_ns:,} ns") or "N/A"), 140)
+        draw_row("Runtime:", ((f"{res.metrics.runtime_ns:,} ns") or "N/A"), 140)
         
         # Divider
         pygame.draw.line(screen, (71, 85, 105), (ui_x+10, stats_y+170), (ui_x+ui_w-10, stats_y+170), 1)
