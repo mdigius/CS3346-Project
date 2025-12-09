@@ -2,6 +2,9 @@
 
 Command-line interface and library for experimenting with grid-based maze solvers (BFS, DFS, bi-BFS, Dijkstra, A*, Greedy, dead-end filling, and agent algorithms).
 
+## A note for Windows users
+venv paths vary between Windows and Mac systems, if you're on Windows the ```bin``` folder in the paths mentioned below should be replaced with the ```Scripts``` folder. For example, instead of running ```venv/bin/pip install -r requirements-dev.txt``` Windows users should run ```venv/bin/pip install -r requirements-dev.txt```.
+
 ## Quick Start
 ```bash
 python3 -m venv venv
