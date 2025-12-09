@@ -464,7 +464,7 @@ def draw_sidebar():
         draw_row("Current Algo:", current_algo_name, 50, COLOR_ACCENT)
         draw_row("Visited Nodes:", visited_txt, 80)
         draw_row("Path Length:", str(res.metrics.path_length or "N/A"), 110)
-        draw_row("Time Taken:", ((str(res.metrics.runtime_ns) + "ns") or "N/A"), 140)
+        draw_row("Time Taken:", ((f"{res.metrics.runtime_ns:,} ns") or "N/A"), 140)
         
         # Divider
         pygame.draw.line(screen, (71, 85, 105), (ui_x+10, stats_y+170), (ui_x+ui_w-10, stats_y+170), 1)
@@ -480,7 +480,7 @@ def draw_sidebar():
         val_vis = str(best_visited_count) if best_visited_count != float('inf') else "-"
         draw_row("Least Visited:", val_vis, 240, COLOR_SUCCESS)
 
-        val_time = (str(best_algo_time) + "ns") if best_algo_time != float('inf') else "-"
+        val_time = f"{best_algo_time:,} ns" if best_algo_time != float('inf') else "-"
         draw_row("Runtime", val_time, 270, COLOR_SUCCESS)
         
     else:
