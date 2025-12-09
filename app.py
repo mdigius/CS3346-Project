@@ -21,7 +21,7 @@ pygame.init()
 
 # --- CONFIGURATION & CONSTANTS ---
 WINDOW_WIDTH = 1280
-WINDOW_HEIGHT = 720
+WINDOW_HEIGHT = 750
 SIDEBAR_WIDTH = 320  # Dedicated space for UI
 MAZE_AREA_WIDTH = WINDOW_WIDTH - SIDEBAR_WIDTH
 
@@ -70,6 +70,7 @@ animation_speed = 1.0  # Steps per frame (float)
 best_path_len = float('inf')
 best_visited_count = float('inf')
 best_algo_name = "-"
+best_algo_time = float('inf')
 
 # --- ASSET LOADING & SCALING ---
 try:
@@ -263,7 +264,7 @@ def reset_state():
         robot_pos = None
 
 def change_size(delta):
-    global ROWS, COLS, maze_map, best_path_len, best_algo_name, best_visited_count
+    global ROWS, COLS, maze_map, best_path_len, best_algo_name, best_visited_count, best_algo_time
     new_r = ROWS + delta
     new_c = COLS + delta
     if new_r > 4 and new_c > 4:
@@ -275,9 +276,10 @@ def change_size(delta):
         best_path_len = float('inf')
         best_visited_count = float('inf')
         best_algo_name = "-"
+        best_algo_time = float('inf')
 
 def trigger_solve():
-    global solutions, playing, anim_step, robot_pos, solve_error, best_path_len, best_algo_name, current_algo_name, best_visited_count
+    global solutions, playing, anim_step, robot_pos, solve_error, best_path_len, best_algo_name, current_algo_name, best_visited_count, best_algo_time
     
     reset_state()
     
@@ -301,12 +303,14 @@ def trigger_solve():
                 best_path_len = result.metrics.path_length
                 best_visited_count = current_visited_count
                 best_algo_name = name
+                best_algo_time = result.metrics.runtime_ns
             
             # Case 2: Tie for path length, but this one visited fewer nodes (more efficient)
             elif result.metrics.path_length == best_path_len:
                 if current_visited_count < best_visited_count:
                     best_visited_count = current_visited_count
                     best_algo_name = name
+                    best_algo_time = result.metrics.runtime_ns
             
         playing = True
         robot_pos = start
@@ -438,8 +442,8 @@ def draw_sidebar():
     # --- STATISTICS PANEL ---
     # Moved down to accommodate new button (y=400 -> y=430)
     stats_y = 430
-    pygame.draw.rect(screen, (30, 41, 59), (ui_x, stats_y, ui_w, 260), border_radius=8)
-    pygame.draw.rect(screen, (71, 85, 105), (ui_x, stats_y, ui_w, 260), 1, border_radius=8)
+    pygame.draw.rect(screen, (30, 41, 59), (ui_x, stats_y, ui_w, 300), border_radius=8)
+    pygame.draw.rect(screen, (71, 85, 105), (ui_x, stats_y, ui_w, 300), 1, border_radius=8)
     
     head_txt = font_bold.render("STATISTICS", True, COLOR_TEXT_MAIN)
     screen.blit(head_txt, (ui_x + 15, stats_y + 15))
@@ -460,20 +464,24 @@ def draw_sidebar():
         draw_row("Current Algo:", current_algo_name, 50, COLOR_ACCENT)
         draw_row("Visited Nodes:", visited_txt, 80)
         draw_row("Path Length:", str(res.metrics.path_length or "N/A"), 110)
+        draw_row("Runtime:", ((f"{res.metrics.runtime_ns:,} ns") or "N/A"), 140)
         
         # Divider
-        pygame.draw.line(screen, (71, 85, 105), (ui_x+10, stats_y+140), (ui_x+ui_w-10, stats_y+140), 1)
+        pygame.draw.line(screen, (71, 85, 105), (ui_x+10, stats_y+170), (ui_x+ui_w-10, stats_y+170), 1)
         
         # Best Stats Section
-        draw_row("Best Found:", best_algo_name, 160, COLOR_SUCCESS)
+        draw_row("Best Found:", best_algo_name, 180, COLOR_SUCCESS)
         
         # Format the best path length
         val_path = str(best_path_len) if best_path_len != float('inf') else "-"
-        draw_row("Shortest Path:", val_path, 190, COLOR_SUCCESS)
+        draw_row("Shortest Path:", val_path, 210, COLOR_SUCCESS)
 
         # Format and Draw Best Visited Count
         val_vis = str(best_visited_count) if best_visited_count != float('inf') else "-"
-        draw_row("Least Visited:", val_vis, 220, COLOR_SUCCESS)
+        draw_row("Least Visited:", val_vis, 240, COLOR_SUCCESS)
+
+        val_time = f"{best_algo_time:,} ns" if best_algo_time != float('inf') else "-"
+        draw_row("Runtime", val_time, 270, COLOR_SUCCESS)
         
     else:
         info = font_small.render("Press Solve to start...", True, (100, 116, 139))
