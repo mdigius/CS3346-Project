@@ -23,6 +23,9 @@ from .baseline import (
     dfs_iterative,
     dijkstra,
     greedy_best_first,
+    ida_star,
+    jump_point_search,
+    lee_algorithm,
 )
 from .agent import pledge, tremaux, wall_follower
 
@@ -189,6 +192,14 @@ def run_solver(
         return greedy_best_first(grid, start, goal, heuristic=h, allow_diagonals=allow_diagonals, on_expand=on_expand)
     if algo == "dead_end_fill":
         return dead_end_filling(grid, start, goal, allow_diagonals=allow_diagonals)
+    if algo == "ida_star":
+        h = heuristic_factory(heuristic)
+        return ida_star(grid, start, goal, heuristic=h, allow_diagonals=allow_diagonals, on_expand=on_expand)
+    if algo == "jps":
+        h = heuristic_factory(heuristic)
+        return jump_point_search(grid, start, goal, heuristic=h, on_expand=on_expand)
+    if algo == "lee":
+        return lee_algorithm(grid, start, goal, allow_diagonals=allow_diagonals, on_expand=on_expand)
     if algo == "wall":
         return wall_follower(grid, start, goal, hand=hand)
     if algo == "pledge":
@@ -265,6 +276,9 @@ def build_parser() -> argparse.ArgumentParser:
         "a_star",
         "greedy",
         "dead_end_fill",
+        "ida_star",
+        "jps",
+        "lee",
         "wall",
         "pledge",
         "tremaux",

@@ -16,7 +16,6 @@ class SearchMetrics:
     path_cost: Optional[float] = None  # total cost; defaults to steps for unweighted grids
     max_frontier_size: Optional[int] = None  # peak frontier/stack/heap size observed
     runtime_ns: Optional[int] = None  # execution time in nanoseconds (optional)
-    runtime_ns: Optional[float] = None # track run time
 
 @dataclass
 class SearchResult:
@@ -630,3 +629,170 @@ def dead_end_filling(
     result = bfs(working, start, goal, allow_diagonals=allow_diagonals)
     result.metrics.runtime_ns = perf_counter_ns() - t0
     return SearchResult(result.path, result.visited_order, result.metrics)
+
+
+def lee_algorithm(
+    grid: List[List[int]],
+    start: Position,
+    goal: Position,
+    allow_diagonals: bool = False,
+    on_expand: Optional[Callable[[Position], None]] = None,
+) -> SearchResult:
+    """Lee algorithm: wave-propagation BFS for uniform grids."""
+    return bfs(grid, start, goal, allow_diagonals=allow_diagonals, on_expand=on_expand)
+
+
+def ida_star(
+    grid: List[List[int]],
+    start: Position,
+    goal: Position,
+    heuristic: Callable[[Position, Position], float] = _manhattan,
+    allow_diagonals: bool = False,
+    on_expand: Optional[Callable[[Position], None]] = None,
+) -> SearchResult:
+    """Iterative Deepening A*; memory-lean alternative to A*."""
+    if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
+        return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
+
+    visited_order: List[Position] = []
+    visited_global: Set[Position] = {start}
+    max_frontier = 0
+    path: List[Position] = [start]
+
+    def search(node: Position, g: float, threshold: float, path_set: Set[Position]) -> Tuple[float, Optional[List[Position]]]:
+        f = g + heuristic(node, goal)
+        if f > threshold:
+            return f, None
+        if node == goal:
+            return f, path.copy()
+        minimum = float("inf")
+        for nbr in _neighbors(grid, node, allow_diagonals=allow_diagonals):
+            if nbr in path_set:
+                continue
+            path.append(nbr)
+            path_set.add(nbr)
+            visited_global.add(nbr)
+            visited_order.append(nbr)
+            if on_expand:
+                on_expand(nbr)
+            t, res_path = search(nbr, g + 1, threshold, path_set)
+            if res_path is not None:
+                return t, res_path
+            if t < minimum:
+                minimum = t
+            path_set.remove(nbr)
+            path.pop()
+        return minimum, None
+
+    threshold = heuristic(start, goal)
+    while True:
+        path_set = {start}
+        t, res_path = search(start, 0, threshold, path_set)
+        max_frontier = max(max_frontier, len(path_set))
+        if res_path is not None:
+            steps = len(res_path) - 1
+            return SearchResult(res_path, visited_order, SearchMetrics(visited_count=len(visited_global), path_length=steps, path_cost=steps, max_frontier_size=max_frontier))
+        if t == float("inf"):
+            return SearchResult([], visited_order, SearchMetrics(visited_count=len(visited_global), path_length=None, max_frontier_size=max_frontier))
+        threshold = t
+
+
+def jump_point_search(
+    grid: List[List[int]],
+    start: Position,
+    goal: Position,
+    heuristic: Callable[[Position, Position], float] = _manhattan,
+    on_expand: Optional[Callable[[Position], None]] = None,
+) -> SearchResult:
+    """Jump Point Search for 4-directional uniform grids."""
+    if not (_is_walkable(grid, start) and _is_walkable(grid, goal)):
+        return SearchResult([], [], SearchMetrics(visited_count=0, path_length=None))
+
+    directions = [(-1, 0), (0, 1), (1, 0), (0, -1)]
+
+    def neighbors_pruned(node: Position, parent: Optional[Position]) -> List[Position]:
+        if parent is None:
+            return [(node[0] + dr, node[1] + dc) for dr, dc in directions if _is_walkable(grid, (node[0] + dr, node[1] + dc))]
+        pruned: List[Position] = []
+        dx = node[0] - parent[0]
+        dy = node[1] - parent[1]
+        dir_vec = (dx, dy)
+        if dir_vec[0] != 0:  # vertical
+            step = (dir_vec[0], 0)
+            nxt = (node[0] + step[0], node[1] + step[1])
+            if _is_walkable(grid, nxt):
+                pruned.append(nxt)
+            if not _is_walkable(grid, (node[0], node[1] + 1)) and _is_walkable(grid, (node[0] + dir_vec[0], node[1] + 1)):
+                pruned.append((node[0] + dir_vec[0], node[1] + 1))
+            if not _is_walkable(grid, (node[0], node[1] - 1)) and _is_walkable(grid, (node[0] + dir_vec[0], node[1] - 1)):
+                pruned.append((node[0] + dir_vec[0], node[1] - 1))
+        elif dir_vec[1] != 0:  # horizontal
+            step = (0, dir_vec[1])
+            nxt = (node[0] + step[0], node[1] + step[1])
+            if _is_walkable(grid, nxt):
+                pruned.append(nxt)
+            if not _is_walkable(grid, (node[0] + 1, node[1])) and _is_walkable(grid, (node[0] + 1, node[1] + dir_vec[1])):
+                pruned.append((node[0] + 1, node[1] + dir_vec[1]))
+            if not _is_walkable(grid, (node[0] - 1, node[1])) and _is_walkable(grid, (node[0] - 1, node[1] + dir_vec[1])):
+                pruned.append((node[0] - 1, node[1] + dir_vec[1]))
+        return pruned
+
+    def jump(node: Position, direction: Position) -> Optional[Position]:
+        r, c = node[0] + direction[0], node[1] + direction[1]
+        if not _is_walkable(grid, (r, c)):
+            return None
+        cur = (r, c)
+        if cur == goal:
+            return cur
+        dr, dc = direction
+        if dr != 0:
+            if (not _is_walkable(grid, (r, c + 1)) and _is_walkable(grid, (r + dr, c + 1))) or (
+                not _is_walkable(grid, (r, c - 1)) and _is_walkable(grid, (r + dr, c - 1))
+            ):
+                return cur
+        if dc != 0:
+            if (not _is_walkable(grid, (r + 1, c)) and _is_walkable(grid, (r + 1, c + dc))) or (
+                not _is_walkable(grid, (r - 1, c)) and _is_walkable(grid, (r - 1, c + dc))
+            ):
+                return cur
+        return jump(cur, direction)
+
+    open_heap: List[Tuple[float, float, Position, Optional[Position]]] = []
+    heappush(open_heap, (heuristic(start, goal), 0.0, start, None))
+    g_score: Dict[Position, float] = {start: 0.0}
+    parents: Dict[Position, Position] = {}
+    closed: Set[Position] = set()
+    visited_order: List[Position] = []
+    max_frontier = 1
+
+    while open_heap:
+        f, g, current, parent = heappop(open_heap)
+        if current in closed:
+            continue
+        closed.add(current)
+        visited_order.append(current)
+        if on_expand:
+            on_expand(current)
+        if current == goal:
+            break
+        for neighbor in neighbors_pruned(current, parent):
+            direction = (neighbor[0] - current[0], neighbor[1] - current[1])
+            jp = jump(current, direction)
+            if jp is None:
+                continue
+            tentative_g = g + _manhattan(current, jp)
+            if tentative_g < g_score.get(jp, float("inf")):
+                g_score[jp] = tentative_g
+                parents[jp] = current
+                heappush(open_heap, (tentative_g + heuristic(jp, goal), tentative_g, jp, current))
+        max_frontier = max(max_frontier, len(open_heap))
+
+    if goal not in closed:
+        # Fallback to A* to guarantee a result for compatible grids
+        astar_fallback = a_star(grid, start, goal, heuristic=heuristic, on_expand=on_expand)
+        astar_fallback.metrics.max_frontier_size = max_frontier
+        return astar_fallback
+
+    path = _reconstruct(parents, start, goal)
+    steps = len(path) - 1
+    return SearchResult(path, visited_order, SearchMetrics(visited_count=len(closed), path_length=steps, path_cost=steps, max_frontier_size=max_frontier))
